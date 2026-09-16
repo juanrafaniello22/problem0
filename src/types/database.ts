@@ -22,6 +22,16 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 
 export type FeedbackType = 'sugerencia' | 'problema' | 'valoracion';
 
+export type ExamDifficulty = 'easy' | 'medium' | 'hard';
+
+export type ExamStatus = 'active' | 'completed' | 'archived';
+
+export type TaskType = 'study' | 'review' | 'quiz' | 'practice' | 'break';
+
+export type TaskStatus = 'pending' | 'completed' | 'skipped';
+
+export type PlanSource = 'ai' | 'deterministic';
+
 export type ProfileRow = {
   id: string;
   email: string | null;
@@ -76,6 +86,73 @@ export type FeedbackRow = {
   created_at: string;
 }
 
+export type ExamRow = {
+  id: string;
+  user_id: string;
+  subject_id: string | null;
+  title: string;
+  /** Fecha del examen en formato `YYYY-MM-DD`. */
+  exam_date: string;
+  difficulty: ExamDifficulty;
+  daily_minutes: number;
+  /** Días disponibles en formato ISO: 1 = lunes … 7 = domingo. */
+  available_weekdays: number[];
+  status: ExamStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TopicRow = {
+  id: string;
+  user_id: string;
+  exam_id: string;
+  name: string;
+  position: number;
+  weight: number;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudyPlanRow = {
+  id: string;
+  user_id: string;
+  exam_id: string;
+  current_version_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudyPlanVersionRow = {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  version: number;
+  source: PlanSource;
+  reason: string;
+  summary: Json;
+  created_at: string;
+};
+
+export type StudyTaskRow = {
+  id: string;
+  user_id: string;
+  exam_id: string;
+  plan_version_id: string;
+  topic_id: string | null;
+  topic_label: string;
+  /** Fecha programada en formato `YYYY-MM-DD`. */
+  scheduled_date: string;
+  duration_minutes: number;
+  type: TaskType;
+  status: TaskStatus;
+  position: number;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type Insertable<Row, Optional extends keyof Row> = Omit<Row, Optional> & Partial<Pick<Row, Optional>>;
 
 export type Database = {
@@ -127,6 +204,63 @@ export type Database = {
         Update: Partial<FeedbackRow>;
         Relationships: [];
       };
+      exams: {
+        Row: ExamRow;
+        Insert: Insertable<
+          ExamRow,
+          | 'id'
+          | 'subject_id'
+          | 'difficulty'
+          | 'daily_minutes'
+          | 'available_weekdays'
+          | 'status'
+          | 'notes'
+          | 'created_at'
+          | 'updated_at'
+        >;
+        Update: Partial<ExamRow>;
+        Relationships: [];
+      };
+      topics: {
+        Row: TopicRow;
+        Insert: Insertable<
+          TopicRow,
+          'id' | 'position' | 'weight' | 'completed_at' | 'created_at' | 'updated_at'
+        >;
+        Update: Partial<TopicRow>;
+        Relationships: [];
+      };
+      study_plans: {
+        Row: StudyPlanRow;
+        Insert: Insertable<
+          StudyPlanRow,
+          'id' | 'current_version_id' | 'created_at' | 'updated_at'
+        >;
+        Update: Partial<StudyPlanRow>;
+        Relationships: [];
+      };
+      study_plan_versions: {
+        Row: StudyPlanVersionRow;
+        Insert: Insertable<StudyPlanVersionRow, 'id' | 'reason' | 'summary' | 'created_at'>;
+        Update: Partial<StudyPlanVersionRow>;
+        Relationships: [];
+      };
+      study_tasks: {
+        Row: StudyTaskRow;
+        Insert: Insertable<
+          StudyTaskRow,
+          | 'id'
+          | 'topic_id'
+          | 'type'
+          | 'status'
+          | 'position'
+          | 'completed_at'
+          | 'created_at'
+          | 'updated_at'
+        >;
+        Update: Partial<StudyTaskRow>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -135,6 +269,11 @@ export type Database = {
       primary_goal: PrimaryGoal;
       theme_preference: ThemePreference;
       feedback_type: FeedbackType;
+      exam_difficulty: ExamDifficulty;
+      exam_status: ExamStatus;
+      task_type: TaskType;
+      task_status: TaskStatus;
+      plan_source: PlanSource;
     };
     CompositeTypes: Record<string, never>;
   };

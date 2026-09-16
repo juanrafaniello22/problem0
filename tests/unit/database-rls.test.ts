@@ -31,10 +31,56 @@ describe('migraciones de Supabase', () => {
     expect(readdirSync(MIGRATIONS_DIR).filter((file) => file.endsWith('.sql')).length).toBeGreaterThan(0);
   });
 
-  it('crea las tablas de la fundación', () => {
+  it('crea todas las tablas esperadas', () => {
     expect(tableNames().sort()).toEqual(
-      ['analytics_events', 'feedback', 'profiles', 'subjects', 'user_settings'].sort(),
+      [
+        'analytics_events',
+        'exams',
+        'feedback',
+        'profiles',
+        'study_plan_versions',
+        'study_plans',
+        'study_tasks',
+        'subjects',
+        'topics',
+        'user_settings',
+      ].sort(),
     );
+  });
+
+  it('las tablas que cuelgan de un examen comprueban su propiedad al insertar', () => {
+    for (const table of ['topics', 'study_plans']) {
+      const policy = sql.match(
+        new RegExp(`create policy "${table}_insert_own"[\\s\\S]*?;`),
+      )?.[0];
+      expect(policy, `falta la política de insert de ${table}`).toBeTruthy();
+      expect(policy).toContain('from public.exams');
+    }
+
+    const tasksPolicy = sql.match(/create policy "study_tasks_insert_own"[\s\S]*?;/)?.[0];
+    expect(tasksPolicy).toContain('from public.study_plan_versions');
+  });
+
+  it('el histórico de versiones del plan es inmutable', () => {
+    expect(sql).not.toMatch(/create policy "study_plan_versions_(update|delete)/);
+  });
+
+  it('una tarea completada siempre guarda cuándo se completó', () => {
+    expect(sql).toContain('study_tasks_completed_consistency');
+  });
+
+  it('no usa array_length() dentro de un CHECK', () => {
+    // array_length() devuelve NULL con arrays vacíos y un CHECK que da NULL
+    // se da por cumplido, así que dejaría pasar la lista vacía.
+    // Para comprobar el tamaño de un array va cardinality().
+    const checks = [...sql.matchAll(/check\s*\(([\s\S]*?)\)\s*(,|\n)/g)].map(
+      (match) => match[1] ?? '',
+    );
+    for (const check of checks) {
+      expect(check, 'usa array_length() en un CHECK; usa cardinality()').not.toContain(
+        'array_length(',
+      );
+    }
   });
 
   it('activa RLS en todas las tablas creadas', () => {

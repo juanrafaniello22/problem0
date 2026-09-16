@@ -19,8 +19,8 @@ export interface NavItem {
 /** Navegación principal de la aplicación (sidebar y barra inferior). */
 export const appNavItems: NavItem[] = [
   { href: routes.dashboard, label: 'Panel', icon: LayoutDashboardIcon },
-  { href: routes.plan, label: 'Plan', icon: CalendarDaysIcon, upcoming: true },
+  { href: routes.plan, label: 'Plan', icon: CalendarDaysIcon },
   { href: routes.focus, label: 'Focus', icon: TimerIcon, upcoming: true },
   { href: routes.habits, label: 'Hábitos', icon: FlameIcon, upcoming: true },
-  { href: routes.progress, label: 'Progreso', icon: BarChart3Icon, upcoming: true },
+  { href: routes.progress, label: 'Progreso', icon: BarChart3Icon },
 ];

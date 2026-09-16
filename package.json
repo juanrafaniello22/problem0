@@ -2,7 +2,7 @@
   "name": "planora",
   "version": "0.1.0",
   "private": true,
-  "description": "Planora — Tu plan de estudio. Creado por IA.",
+  "description": "Planora \u2014 Tu plan de estudio. Creado por IA.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify:rls": "./scripts/verify-rls.sh",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {

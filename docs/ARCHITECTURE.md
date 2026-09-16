@@ -80,8 +80,12 @@ Nada de constantes repartidas por la aplicación:
 services/
 ├── auth/       session.ts (guardias de servidor) · auth.actions.ts
 ├── profile/    profile.service.ts · onboarding.actions.ts · profile.actions.ts
+├── exams/      exam.service.ts · exam.actions.ts
+├── planning/   plan.schema.ts · scheduler.ts · plan.service.ts · plan.actions.ts
+├── tasks/      task.service.ts · task.actions.ts
+├── progress/   progress.ts (puro) · progress.service.ts
+├── billing/    entitlements.ts · subscription.service.ts
 ├── analytics/  events.ts (catálogo cerrado) · track.ts
-├── billing/    (fase 5)
 └── ai/         (fase 3)
 ```
 
@@ -118,9 +122,18 @@ Supabase), rate limiting por IP en autenticación, protección contra open
 redirects en `safeNextPath()`, logs con redacción de campos sensibles y
 mensajes de error genéricos que no revelan si un email existe.
 
-Hay un test (`tests/unit/database-rls.test.ts`) que lee las migraciones y
-falla si alguien añade una tabla sin RLS, una política `to public` o un
-`using (true)`.
+Dos redes de seguridad sobre RLS:
+
+1. `tests/unit/database-rls.test.ts` lee las migraciones y falla si alguien
+   añade una tabla sin RLS, una política `to public`, un `using (true)` o un
+   `CHECK` con `array_length()` (que en PostgreSQL devuelve NULL con arrays
+   vacíos, y un CHECK que da NULL se da por cumplido).
+2. `npm run verify:rls` levanta un PostgreSQL real, aplica las migraciones y
+   comprueba con dos usuarios que uno no puede leer, modificar ni borrar los
+   datos del otro — 24 comprobaciones, incluidas las restricciones de
+   integridad y los borrados en cascada. Encontró un fallo real: la
+   restricción de días disponibles usaba `array_length` y dejaba pasar
+   exámenes sin ningún día marcado.
 
 ## 8. Base de datos
 
@@ -142,17 +155,71 @@ Decisiones:
 - Los tipos TypeScript viven en `src/types/database.ts` y deben reflejar las
   migraciones. Se pueden regenerar con `supabase gen types`.
 
-## 9. IA (preparado, se implementa en fase 3)
+## 9. Generación del plan
+
+El plan es el producto. La pieza clave es que **quien lo genera es
+intercambiable**: tanto el planificador local como la IA producen la misma
+estructura, definida en `services/planning/plan.schema.ts` y validada con Zod
+antes de tocar la base de datos.
+
+```
+Examen + temas + disponibilidad
+        │
+        ├──► IA (fase 3) ──┐
+        │                  ├──► GeneratedPlan ──► Zod ──► savePlan()
+        └──► Planificador ─┘                       │
+             determinista                          └──► si no valida, no se
+                                                        guarda nada y se
+                                                        ofrece reintentar
+```
+
+### Planificador determinista (`scheduler.ts`)
+
+Función pura, sin dependencias. Reparte los temas entre los días realmente
+disponibles y garantiza que:
+
+- nunca programa más minutos al día de los que el usuario ha dicho;
+- nunca planifica el día del examen ni días no marcados;
+- reserva los últimos días para repaso, más cuanto más difícil es el examen;
+- no inventa qué temas importan más: con pesos iguales, reparte por igual;
+- cuando no cabe todo, recorta a todos por igual antes que sacrificar temas
+  enteros, y lo dice claramente en `warnings`;
+- es determinista: las mismas entradas dan siempre el mismo plan.
+
+Tiene 26 pruebas propias. Dos fallos reales (una sesión de 5 minutos y un
+bloque de 90) los encontraron esas pruebas antes de que llegara a la interfaz.
+
+### Versiones del plan
+
+Cada generación o replanificación crea una fila en `study_plan_versions` y
+mueve el puntero `study_plans.current_version_id`. Las versiones anteriores no
+se borran nunca: son el histórico auditable. El progreso se calcula siempre
+sobre la versión vigente.
+
+### IA (fase 3)
 
 - Abstracción `AIProvider` con implementaciones `OpenAIProvider`,
   `AnthropicProvider` y `GeminiProvider`. La aplicación depende de la
   interfaz, no del proveedor.
-- La IA devuelve **JSON estructurado**, nunca HTML. La respuesta se valida con
-  Zod; si no cumple el esquema no se guarda nada, se registra el error y se
-  ofrece reintentar.
-- Las API keys se leen sólo en servidor. Cada generación se registra en
+- La IA devuelve **JSON estructurado**, nunca HTML, y se valida con
+  `aiPlanResponseSchema`. Si no cumple, no se guarda nada: se registra el
+  error y se ofrece reintentar con el planificador local como respaldo.
+- Las API keys se leen sólo en servidor. Cada generación se registrará en
   `ai_generations` para controlar coste y aplicar los límites de
   `config/limits.ts`.
+
+## 9b. Límites Free/Pro
+
+Toda la lógica vive en `services/billing/entitlements.ts`:
+
+```ts
+canUseFeature(usage, 'create_exam')  // { allowed, reason, limit, used, message }
+```
+
+Ningún componente ni acción compara planes por su cuenta. Los límites salen de
+`config/limits.ts` y el plan del usuario de `subscription.service.ts`, que hoy
+devuelve `free` para todos y en la fase 5 leerá la tabla `subscriptions`
+alimentada por el webhook de Stripe.
 
 ## 10. Rendimiento
 
@@ -168,8 +235,8 @@ Decisiones:
 | Fase | Contenido | Estado |
 |------|-----------|--------|
 | 1 | Fundación, branding, landing, auth, onboarding, panel básico | **Completada** |
-| 2 | Exámenes, temas, tareas, panel real, progreso básico | Pendiente |
-| 3 | `AIProvider`, generación de planes, límites, replanificación | Pendiente |
+| 2 | Exámenes, temas, planes, tareas, panel real, progreso | **Completada** |
+| 3 | `AIProvider`, generación con IA, límites de IA, `ai_generations` | Pendiente |
 | 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | Pendiente |
 | 5 | Stripe, suscripciones, webhook, portal, paywalls | Pendiente |
 | 6 | Responsive fino, SEO, PWA, analítica, feedback, seguridad | Pendiente |
@@ -185,3 +252,15 @@ Decisiones:
   (`@theme inline`), que es donde ya viven los tokens de color.
 - **Secciones aún no construidas** muestran un estado «en construcción»
   explícito en lugar de botones que aparentan funcionar.
+- **El planificador local se adelanta a la fase 3** para que el producto sea
+  utilizable de principio a fin desde ya: crear examen → plan → estudiar →
+  completar → replanificar. La IA se suma encima, no sustituye la
+  arquitectura. Además queda como respaldo cuando la IA falle o se agote la
+  cuota, que es justo lo que pide el requisito de no dejar al usuario sin
+  plan por un error del modelo.
+- **Reordenar temas con botones y no arrastrando**: funciona con teclado, con
+  lector de pantalla y con el dedo en un móvil, que es donde más se va a usar.
+- **`user_id` duplicado en `topics` y `study_tasks`** aunque se pudiera
+  deducir por el examen: permite políticas RLS sin JOIN en cada consulta. Las
+  políticas de inserción comprueban además la propiedad del examen, así que la
+  desnormalización no abre ningún hueco.

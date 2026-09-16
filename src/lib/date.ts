@@ -140,3 +140,18 @@ export function greetingForTimeZone(timeZone: string, now: Date = new Date()): s
   if (hour < 21) return 'Buenas tardes';
   return 'Buenas noches';
 }
+
+/** Lunes de la semana a la que pertenece la fecha. */
+export function startOfWeek(value: IsoDate): IsoDate {
+  return addDays(value, -(isoWeekday(value) - 1));
+}
+
+/** Domingo de la semana a la que pertenece la fecha. */
+export function endOfWeek(value: IsoDate): IsoDate {
+  return addDays(startOfWeek(value), 6);
+}
+
+/** Primer día del mes de la fecha indicada. */
+export function startOfMonth(value: IsoDate): IsoDate {
+  return `${value.slice(0, 7)}-01`;
+}

@@ -121,7 +121,9 @@ supabase db push
 **Desde el panel web**: abre el *SQL Editor* y ejecuta cada archivo de
 `supabase/migrations/` en orden ascendente.
 
-### Qué crea `0001_foundation.sql`
+### Qué crean las migraciones
+
+`0001_foundation.sql` — la base de la cuenta:
 
 | Tabla | Contenido |
 |-------|-----------|
@@ -131,14 +133,27 @@ supabase db push
 | `analytics_events` | Eventos de producto, sin datos personales |
 | `feedback` | Sugerencias, problemas y valoraciones |
 
+`0002_core.sql` — el núcleo del producto:
+
+| Tabla | Contenido |
+|-------|-----------|
+| `exams` | Examen: fecha, dificultad, minutos al día y días disponibles |
+| `topics` | Temas que entran, en el orden que fija el usuario |
+| `study_plans` | Un plan por examen, apuntando a su versión vigente |
+| `study_plan_versions` | Histórico auditable: cada replanificación es una versión |
+| `study_tasks` | Sesiones concretas: qué estudiar, qué día y cuánto |
+
 Además:
 
 - **RLS activo en todas ellas**, con políticas `to authenticated` filtradas
   por `auth.uid()`. Un usuario no puede leer, modificar ni borrar datos de otro.
+- Las tablas que cuelgan de un examen comprueban además, al insertar, que ese
+  examen es tuyo: no basta con poner tu `user_id` en la fila.
 - Un trigger crea perfil y ajustes automáticamente al registrarse, de modo que
   nunca hay un usuario sin perfil.
-- Las siguientes fases añadirán `exams`, `topics`, `study_plans`,
-  `study_plan_versions`, `study_tasks`, `habits`, `habit_completions`,
+- Al borrar un examen desaparecen en cascada sus temas, su plan y sus tareas.
+  Al borrar la cuenta, los eventos de uso se anonimizan en lugar de perderse.
+- Las siguientes fases añadirán `habits`, `habit_completions`,
   `study_sessions`, `subscriptions` y `ai_generations`.
 
 > Después de cambiar el esquema, actualiza `src/types/database.ts`
@@ -232,7 +247,19 @@ Vitest con jsdom y Testing Library.
 ```bash
 npm run test          # una pasada
 npm run test:watch    # modo vigilancia
+npm run verify:rls    # comprueba RLS contra un PostgreSQL real (ver abajo)
 ```
+
+### Comprobación de RLS contra PostgreSQL real
+
+`npm run verify:rls` levanta un PostgreSQL temporal, aplica todas las
+migraciones y comprueba con dos usuarios de prueba que uno no puede leer,
+modificar ni borrar los datos del otro, que las restricciones de integridad
+hacen su trabajo y que los borrados en cascada funcionan. Al terminar, borra
+todo lo que ha creado.
+
+Requiere PostgreSQL instalado en local (`initdb`, `pg_ctl`, `psql`). No toca
+tu proyecto de Supabase ni ningún dato real.
 
 Qué se cubre hoy:
 
@@ -245,13 +272,24 @@ Qué se cubre hoy:
 - **Precios y límites** (`tests/unit/pricing.test.ts`) — coherencia entre
   planes y que Pro nunca sea más restrictivo que Free.
 - **RLS** (`tests/unit/database-rls.test.ts`) — analiza las migraciones y
-  falla si una tabla no tiene RLS, si hay una política `to public` o un
-  `using (true)`.
-- **Componentes** (`tests/components/pricing-plans.test.tsx`) — la tabla de
-  precios muestra lo que dice la configuración.
+  falla si una tabla no tiene RLS, si hay una política `to public`, un
+  `using (true)` o un `CHECK` con `array_length()` (que deja pasar los
+  arrays vacíos).
+- **Planificador** (`tests/unit/scheduler.test.ts`) — 26 comprobaciones: que
+  nunca programa más minutos de los disponibles, que respeta los días
+  marcados, que no planifica el día del examen, que reserva repaso, que
+  avisa cuando no cabe el temario y que es determinista.
+- **Progreso** (`tests/unit/progress.test.ts`) — porcentajes, retrasos y
+  progreso por tema.
+- **Límites Free/Pro** (`tests/unit/entitlements.test.ts`) — qué puede hacer
+  cada plan y cuántos usos quedan.
+- **Exámenes** (`tests/unit/exam-validation.test.ts`) — validación del
+  formulario y de la fecha del examen.
+- **Componentes** (`tests/components/`) — la tabla de precios muestra lo que
+  dice la configuración; el editor de temas añade, edita, reordena y elimina.
 
-Pendiente para fases siguientes: generación de planes con IA, cálculo de
-progreso, replanificación y webhook de Stripe.
+Pendiente para fases siguientes: generación de planes con IA, Pomodoro y
+webhook de Stripe.
 
 ## 11. Deployment
 
@@ -301,16 +339,23 @@ o a `localhost` si no está definida.
 | Fase | Contenido | Estado |
 |------|-----------|--------|
 | 1 | Fundación, branding, landing, autenticación, onboarding, panel básico | ✅ Completada |
-| 2 | Exámenes, asignaturas, temas, tareas, panel real, progreso básico | ⏳ |
-| 3 | `AIProvider`, generación de planes, límites de IA, replanificación | ⏳ |
+| 2 | Exámenes, asignaturas, temas, tareas, panel real, progreso básico | ✅ Completada |
+| 3 | `AIProvider`, generación de planes con IA, límites de IA | ⏳ |
 | 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | ⏳ |
 | 5 | Stripe, suscripciones, webhook, portal, Free/Pro, paywalls | ⏳ |
 | 6 | Responsive fino, SEO, PWA, analítica, feedback, seguridad | ⏳ |
 | 7 | Testing completo, revisión y despliegue | ⏳ |
 
-Las secciones todavía no construidas (Plan, Focus, Hábitos, Progreso) muestran
-un estado «en construcción» explícito. No hay botones que aparenten funcionar
-sin backend detrás.
+Las secciones todavía no construidas (Focus y Hábitos) muestran un estado
+«en construcción» explícito. No hay botones que aparenten funcionar sin
+backend detrás.
+
+**Nota sobre la fase 3:** Planora ya genera planes, pero con un planificador
+determinista propio en lugar de con IA. Reparte los temas entre tus días
+disponibles, respeta tu tiempo diario, reserva repaso y avisa cuando no cabe
+todo el temario. En la fase 3 se antepone el proveedor de IA usando el mismo
+contrato (`src/services/planning/plan.schema.ts`), y este planificador se
+queda como red de seguridad para cuando la IA falle o se agote la cuota.
 
 La arquitectura y las decisiones de diseño están documentadas en
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -331,6 +376,8 @@ Estado actual de la fase 1:
 - [x] Errores internos no visibles: mensajes genéricos y sin stack traces
 - [x] Logs con redacción de campos sensibles
 - [x] Cabeceras de seguridad (`nosniff`, `Referrer-Policy`, `X-Frame-Options`)
+- [x] Aislamiento entre usuarios verificado contra PostgreSQL real (`npm run verify:rls`)
+- [x] Límites Free/Pro centralizados en `canUseFeature`, aplicados en servidor
 - [ ] Webhook de Stripe validado por firma — *fase 5*
 - [ ] Rate limiting en los endpoints de IA — *fase 3*
 - [ ] Rate limiting distribuido (hoy es por instancia) — antes de escalar

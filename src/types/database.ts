@@ -36,6 +36,10 @@ export type AiGenerationType = 'plan' | 'replan';
 
 export type AiGenerationStatus = 'success' | 'invalid_response' | 'provider_error';
 
+export type HabitFrequency = 'daily' | 'weekdays' | 'custom';
+
+export type SessionStatus = 'completed' | 'abandoned';
+
 export type ProfileRow = {
   id: string;
   email: string | null;
@@ -173,6 +177,46 @@ export type AiGenerationRow = {
   created_at: string;
 };
 
+export type HabitRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  icon: string | null;
+  frequency: HabitFrequency;
+  /** Días en los que toca, en formato ISO: 1 = lunes … 7 = domingo. */
+  target_weekdays: number[];
+  target_value: number | null;
+  target_unit: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HabitCompletionRow = {
+  id: string;
+  user_id: string;
+  habit_id: string;
+  /** Día marcado, en formato `YYYY-MM-DD`. */
+  completed_on: string;
+  value: number | null;
+  created_at: string;
+};
+
+export type StudySessionRow = {
+  id: string;
+  user_id: string;
+  task_id: string | null;
+  exam_id: string | null;
+  planned_minutes: number;
+  /** Segundos realmente estudiados, sin contar las pausas. */
+  actual_seconds: number;
+  status: SessionStatus;
+  label: string | null;
+  started_at: string;
+  ended_at: string;
+  created_at: string;
+};
+
 type Insertable<Row, Optional extends keyof Row> = Omit<Row, Optional> & Partial<Pick<Row, Optional>>;
 
 export type Database = {
@@ -265,6 +309,38 @@ export type Database = {
         Update: Partial<StudyPlanVersionRow>;
         Relationships: [];
       };
+      habits: {
+        Row: HabitRow;
+        Insert: Insertable<
+          HabitRow,
+          | 'id'
+          | 'icon'
+          | 'frequency'
+          | 'target_weekdays'
+          | 'target_value'
+          | 'target_unit'
+          | 'archived_at'
+          | 'created_at'
+          | 'updated_at'
+        >;
+        Update: Partial<HabitRow>;
+        Relationships: [];
+      };
+      habit_completions: {
+        Row: HabitCompletionRow;
+        Insert: Insertable<HabitCompletionRow, 'id' | 'value' | 'created_at'>;
+        Update: Partial<HabitCompletionRow>;
+        Relationships: [];
+      };
+      study_sessions: {
+        Row: StudySessionRow;
+        Insert: Insertable<
+          StudySessionRow,
+          'id' | 'task_id' | 'exam_id' | 'status' | 'label' | 'created_at'
+        >;
+        Update: Partial<StudySessionRow>;
+        Relationships: [];
+      };
       ai_generations: {
         Row: AiGenerationRow;
         Insert: Insertable<
@@ -313,6 +389,8 @@ export type Database = {
       plan_source: PlanSource;
       ai_generation_type: AiGenerationType;
       ai_generation_status: AiGenerationStatus;
+      habit_frequency: HabitFrequency;
+      session_status: SessionStatus;
     };
     CompositeTypes: Record<string, never>;
   };

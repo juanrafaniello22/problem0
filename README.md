@@ -133,6 +133,14 @@ supabase db push
 | `analytics_events` | Eventos de producto, sin datos personales |
 | `feedback` | Sugerencias, problemas y valoraciones |
 
+`0004_habits_sessions.sql` — constancia y tiempo real:
+
+| Tabla | Contenido |
+|-------|-----------|
+| `habits` | Hábitos con frecuencia, días e icono |
+| `habit_completions` | Un hábito marcado un día. Como mucho una vez por día |
+| `study_sessions` | Tiempo REAL estudiado con Focus, sin contar pausas |
+
 `0002_core.sql` — el núcleo del producto:
 
 | Tabla | Contenido |
@@ -153,8 +161,7 @@ Además:
   nunca hay un usuario sin perfil.
 - Al borrar un examen desaparecen en cascada sus temas, su plan y sus tareas.
   Al borrar la cuenta, los eventos de uso se anonimizan en lugar de perderse.
-- Las siguientes fases añadirán `habits`, `habit_completions`,
-  `study_sessions`, `subscriptions` y `ai_generations`.
+- Las siguientes fases añadirán `subscriptions`.
 
 > Después de cambiar el esquema, actualiza `src/types/database.ts`
 > (o regenéralo con `supabase gen types typescript --project-id <id>`).
@@ -335,8 +342,7 @@ Qué se cubre hoy:
 - **Componentes** (`tests/components/`) — la tabla de precios muestra lo que
   dice la configuración; el editor de temas añade, edita, reordena y elimina.
 
-Pendiente para fases siguientes: generación de planes con IA, Pomodoro y
-webhook de Stripe.
+Pendiente para fases siguientes: webhook de Stripe.
 
 ## 11. Deployment
 
@@ -388,14 +394,18 @@ o a `localhost` si no está definida.
 | 1 | Fundación, branding, landing, autenticación, onboarding, panel básico | ✅ Completada |
 | 2 | Exámenes, asignaturas, temas, tareas, panel real, progreso básico | ✅ Completada |
 | 3 | `AIProvider`, generación de planes con IA, límites y consumo | ✅ Completada |
-| 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | ⏳ |
+| 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | ✅ Completada |
 | 5 | Stripe, suscripciones, webhook, portal, Free/Pro, paywalls | ⏳ |
 | 6 | Responsive fino, SEO, PWA, analítica, feedback, seguridad | ⏳ |
 | 7 | Testing completo, revisión y despliegue | ⏳ |
 
-Las secciones todavía no construidas (Focus y Hábitos) muestran un estado
-«en construcción» explícito. No hay botones que aparenten funcionar sin
-backend detrás.
+Todas las secciones de la aplicación funcionan con datos reales. No hay
+botones que aparenten funcionar sin backend detrás.
+
+**Sobre el tiempo estudiado:** Planora distingue dos cosas que otras apps
+mezclan. El *tiempo planificado* es lo que dura una sesión en tu plan. El
+*tiempo real* es lo que mide el modo Focus, y **las pausas no cuentan**. En
+Progreso verás los dos por separado, porque no son lo mismo.
 
 **Nota sobre la IA:** Planora genera los planes con IA cuando hay una clave
 configurada, y con su propio planificador cuando no la hay, cuando la IA falla

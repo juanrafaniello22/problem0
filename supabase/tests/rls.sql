@@ -57,6 +57,18 @@ insert into public.study_plan_versions (id, user_id, plan_id, version, source) v
 insert into public.analytics_events (user_id, name) values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'exam_created');
 
+insert into public.habits (id, user_id, name) values
+  ('55555555-5555-4555-8555-555555555555', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Leer 20 páginas'),
+  ('66666666-6666-4666-8666-666666666666', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Repasar vocabulario');
+
+insert into public.habit_completions (user_id, habit_id, completed_on) values
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '55555555-5555-4555-8555-555555555555', '2099-01-01');
+
+insert into public.study_sessions
+  (user_id, exam_id, planned_minutes, actual_seconds, started_at, ended_at) values
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111',
+   25, 1500, '2099-01-01T10:00:00Z', '2099-01-01T10:25:00Z');
+
 -- A partir de aquí actuamos como Ana, con el rol de un usuario autenticado.
 set local role authenticated;
 set local request.jwt.claim.sub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -73,6 +85,11 @@ begin
   perform pg_temp.ok('sólo ve sus versiones de plan',
     (select count(*) from public.study_plan_versions) = 1);
   perform pg_temp.ok('sólo ve sus eventos', (select count(*) from public.analytics_events) = 1);
+  perform pg_temp.ok('sólo ve sus hábitos', (select count(*) from public.habits) = 1);
+  perform pg_temp.ok('sólo ve sus marcas de hábito',
+    (select count(*) from public.habit_completions) = 1);
+  perform pg_temp.ok('sólo ve sus sesiones de estudio',
+    (select count(*) from public.study_sessions) = 1);
 end $$;
 
 do $$
@@ -101,6 +118,15 @@ begin
   update public.analytics_events set name = 'falseado';
   get diagnostics affected = row_count;
   perform pg_temp.ok('no puede falsear los eventos de analítica', affected = 0);
+
+  update public.habits set name = 'HACKEADO'
+    where id = '66666666-6666-4666-8666-666666666666';
+  get diagnostics affected = row_count;
+  perform pg_temp.ok('no puede modificar los hábitos de otro', affected = 0);
+
+  delete from public.habits where id = '66666666-6666-4666-8666-666666666666';
+  get diagnostics affected = row_count;
+  perform pg_temp.ok('no puede borrar los hábitos de otro', affected = 0);
 end $$;
 
 do $$
@@ -140,6 +166,15 @@ begin
     raise notice '  OK    sí puede crear tareas en su propio plan';
   exception when insufficient_privilege then
     raise exception 'FALLO: no pudo crear una tarea en su propio plan';
+  end;
+
+  begin
+    insert into public.habit_completions (user_id, habit_id, completed_on)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            '66666666-6666-4666-8666-666666666666', '2099-02-01');
+    raise exception 'FALLO: pudo marcar el hábito de otro usuario';
+  exception when insufficient_privilege then
+    raise notice '  OK    no puede marcar el hábito de otro';
   end;
 end $$;
 
@@ -184,6 +219,41 @@ begin
   exception when unique_violation then
     raise notice '  OK    rechaza temas duplicados en el mismo examen';
   end;
+
+  begin
+    insert into public.habit_completions (user_id, habit_id, completed_on)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            '55555555-5555-4555-8555-555555555555', '2099-01-01');
+    raise exception 'FALLO: pudo marcar dos veces el mismo hábito el mismo día';
+  exception when unique_violation then
+    raise notice '  OK    un hábito sólo se marca una vez al día';
+  end;
+
+  begin
+    insert into public.study_sessions
+      (user_id, planned_minutes, actual_seconds, started_at, ended_at)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 25, 1500,
+            '2099-01-01T11:00:00Z', '2099-01-01T10:00:00Z');
+    raise exception 'FALLO: aceptó una sesión que termina antes de empezar';
+  exception when check_violation then
+    raise notice '  OK    rechaza una sesión que acaba antes de empezar';
+  end;
+
+  begin
+    insert into public.habits (user_id, name, target_weekdays)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Sin días', '{}');
+    raise exception 'FALLO: aceptó un hábito sin días';
+  exception when check_violation then
+    raise notice '  OK    rechaza un hábito sin días';
+  end;
+
+  begin
+    insert into public.habits (user_id, name, target_value)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Objetivo sin unidad', 20);
+    raise exception 'FALLO: aceptó un objetivo sin unidad';
+  exception when check_violation then
+    raise notice '  OK    rechaza un objetivo sin unidad';
+  end;
 end $$;
 
 do $$
@@ -195,6 +265,9 @@ begin
   perform pg_temp.ok('al borrar el examen desaparecen sus temas',
     (select count(*) from public.topics
       where exam_id = '11111111-1111-4111-8111-111111111111') = 0);
+  perform pg_temp.ok('al borrar el examen las sesiones se conservan sin examen',
+    (select count(*) from public.study_sessions
+      where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and exam_id is null) = 1);
   perform pg_temp.ok('al borrar el examen desaparecen su plan y sus tareas',
     (select count(*) from public.study_plans
       where exam_id = '11111111-1111-4111-8111-111111111111') = 0

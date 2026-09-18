@@ -87,6 +87,8 @@ services/
 ├── planning/   plan.schema.ts · plan-summary.ts · scheduler.ts
 │              plan.service.ts · plan.actions.ts
 ├── tasks/      task.service.ts · task.actions.ts
+├── habits/     streak.ts (puro) · habit.service.ts · habit.actions.ts
+├── sessions/   session.service.ts · session.actions.ts
 ├── progress/   progress.ts (puro) · progress.service.ts
 ├── billing/    entitlements.ts · subscription.service.ts
 └── analytics/  events.ts (catálogo cerrado) · track.ts
@@ -245,6 +247,35 @@ de plan de IA.
   con otro modelo dentro de la misma llamada. Usa API en beta, así que se
   puede apagar sin perder nada — el respaldo local sigue ahí.
 
+## 9d. Hábitos y tiempo real
+
+**Rachas** (`services/habits/streak.ts`, función pura con 25 pruebas). Dos
+reglas definen el comportamiento:
+
+1. Sólo cuentan los días en los que el hábito toca. Saltarse un domingo no
+   rompe un hábito de lunes a viernes.
+2. Hoy tiene margen: hasta que termine el día no cuenta como fallado. Una
+   racha no debería romperse a las nueve de la mañana.
+
+Un índice único `(habit_id, completed_on)` impide marcar dos veces el mismo
+día, así que la racha no se puede inflar repitiendo la acción.
+
+**Modo Focus** (`components/focus/focus-timer.tsx`). El cronómetro mide sólo
+tiempo activo:
+
+- El tiempo sale de marcas de reloj (`Date.now()`), no de contar *ticks*, así
+  que sigue siendo correcto aunque el navegador ralentice la pestaña.
+- Al pausar se acumula lo transcurrido y se para el contador; al reanudar se
+  guarda una marca nueva.
+- El servidor no se fía del reloj del navegador: acota el tiempo enviado al
+  hueco real entre inicio y fin (`session.actions.ts`). Las pausas sólo pueden
+  restar.
+- Por debajo de un minuto no se guarda nada: es ruido, no una sesión.
+
+Eso da dos métricas distintas, y la aplicación las enseña por separado:
+*tiempo planificado* (lo que dura la sesión en el plan) y *tiempo real* (lo
+que midió el Focus). Mezclarlas haría que el progreso mintiera.
+
 ## 9c. Inyección de prompts
 
 Los nombres de temas los escribe el usuario y acaban en el prompt. Tres capas,
@@ -297,7 +328,7 @@ alimentada por el webhook de Stripe.
 | 1 | Fundación, branding, landing, auth, onboarding, panel básico | **Completada** |
 | 2 | Exámenes, temas, planes, tareas, panel real, progreso | **Completada** |
 | 3 | `AIProvider`, generación con IA, límites, `ai_generations` | **Completada** |
-| 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | Pendiente |
+| 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | **Completada** |
 | 5 | Stripe, suscripciones, webhook, portal, paywalls | Pendiente |
 | 6 | Responsive fino, SEO, PWA, analítica, feedback, seguridad | Pendiente |
 | 7 | Testing completo, revisión y despliegue | Pendiente |
@@ -318,6 +349,12 @@ alimentada por el webhook de Stripe.
   arquitectura. Además queda como respaldo cuando la IA falle o se agote la
   cuota, que es justo lo que pide el requisito de no dejar al usuario sin
   plan por un error del modelo.
+- **Los hábitos se archivan, no se borran, por defecto.** Borrar un hábito se
+  lleva por delante su racha y su histórico; archivarlo lo quita de en medio
+  sin perder nada. El menú ofrece las dos cosas y el borrado pide confirmación.
+- **El tiempo real y el planificado no se suman en una sola cifra.** Son
+  medidas distintas: una es una intención y la otra un hecho. Presentarlas
+  juntas daría una sensación de progreso que no se corresponde con nada.
 - **Reordenar temas con botones y no arrastrando**: funciona con teclado, con
   lector de pantalla y con el dedo en un móvil, que es donde más se va a usar.
 - **La IA se añade encima del planificador local, no lo sustituye.** El

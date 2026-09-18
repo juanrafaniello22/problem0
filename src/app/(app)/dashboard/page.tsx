@@ -5,10 +5,13 @@ import {
   BookOpenIcon,
   CalendarPlusIcon,
   CheckCircle2Icon,
-  ClockIcon,
+  FlameIcon,
+  PlayIcon,
   SparklesIcon,
   TargetIcon,
+  TimerIcon,
 } from 'lucide-react';
+import { HabitCard } from '@/components/habits/habit-card';
 import { ReplanButton } from '@/components/plan/replan-button';
 import { TaskItem } from '@/components/plan/task-item';
 import { StatCard } from '@/components/dashboard/stat-card';
@@ -29,6 +32,8 @@ import { requireSessionUser } from '@/services/auth/session';
 import { getNextExam } from '@/services/exams/exam.service';
 import { getOverallProgress } from '@/services/progress/progress.service';
 import { shouldSuggestReplan } from '@/services/progress/progress';
+import { listTodayHabits } from '@/services/habits/habit.service';
+import { getFocusStats } from '@/services/sessions/session.service';
 import { listOverdueTasks, listTasksForDate } from '@/services/tasks/task.service';
 
 /**
@@ -47,11 +52,13 @@ export default async function DashboardPage() {
   const timezone = profile?.timezone ?? 'Europe/Madrid';
   const today = todayIso(timezone);
 
-  const [nextExam, todayTasks, overdueTasks, progress] = await Promise.all([
+  const [nextExam, todayTasks, overdueTasks, progress, habits, focus] = await Promise.all([
     getNextExam(user.id),
     listTasksForDate(user.id, today),
     listOverdueTasks(user.id, today, 5),
     getOverallProgress(user.id, today),
+    listTodayHabits(user.id, today),
+    getFocusStats(user.id, today, timezone),
   ]);
 
   const greeting = greetingForTimeZone(timezone);
@@ -64,6 +71,10 @@ export default async function DashboardPage() {
     .reduce((sum, task) => sum + task.duration_minutes, 0);
 
   const allDoneToday = realTasks.length > 0 && doneToday === realTasks.length;
+
+  const firstPendingTask = realTasks.find((task) => task.status === 'pending');
+  const habitsDone = habits.filter((entry) => entry.streak.completedToday).length;
+  const bestStreak = habits.reduce((best, entry) => Math.max(best, entry.streak.current), 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -217,6 +228,65 @@ export default async function DashboardPage() {
         </CardContent>
       </Card>
 
+      {!allDoneToday && realTasks.length > 0 && (
+        <Card className="border-primary/25">
+          <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">¿Te pones ahora?</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {firstPendingTask
+                  ? `Siguiente: ${firstPendingTask.topic_label} · ${formatMinutes(firstPendingTask.duration_minutes)}`
+                  : 'Arranca el cronómetro y a por ello.'}
+              </p>
+            </div>
+            <Button asChild size="lg" className="w-full shrink-0 sm:w-auto">
+              <Link
+                href={
+                  firstPendingTask ? `${routes.focus}?task=${firstPendingTask.id}` : routes.focus
+                }
+              >
+                <PlayIcon className="size-4" />
+                Empezar sesión
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {habits.length > 0 && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between gap-2 pb-3">
+            <CardTitle>Hábitos de hoy</CardTitle>
+            <div className="flex items-center gap-2">
+              {bestStreak > 0 && (
+                <Badge variant="streak">
+                  <FlameIcon aria-hidden />
+                  {bestStreak}
+                </Badge>
+              )}
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {habitsDone}/{habits.length}
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col gap-2">
+              {habits.map((entry) => (
+                <li key={entry.habit.id}>
+                  <HabitCard
+                    habit={entry.habit}
+                    streak={entry.streak}
+                    week={entry.week}
+                    today={today}
+                    compact
+                  />
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       {progress.totalTasks > 0 && (
         <div className="grid gap-4 sm:grid-cols-3">
           <StatCard
@@ -226,10 +296,14 @@ export default async function DashboardPage() {
             hint={`${progress.completedTasks} de ${progress.totalTasks} sesiones`}
           />
           <StatCard
-            icon={ClockIcon}
-            label="Esta semana"
-            value={formatMinutes(progress.weekMinutes)}
-            hint="Tiempo de sesiones completadas"
+            icon={TimerIcon}
+            label="Estudiado esta semana"
+            value={formatMinutes(focus.weekMinutes)}
+            hint={
+              focus.todayMinutes > 0
+                ? `${formatMinutes(focus.todayMinutes)} hoy · medido con Focus`
+                : 'Tiempo real medido con Focus'
+            }
             tone="success"
           />
           <StatCard

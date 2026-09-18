@@ -38,9 +38,12 @@ describe('migraciones de Supabase', () => {
         'analytics_events',
         'exams',
         'feedback',
+        'habit_completions',
+        'habits',
         'profiles',
         'study_plan_versions',
         'study_plans',
+        'study_sessions',
         'study_tasks',
         'subjects',
         'topics',
@@ -70,6 +73,24 @@ describe('migraciones de Supabase', () => {
     // Si el usuario pudiera borrar sus generaciones, los límites del plan
     // gratuito no valdrían nada.
     expect(sql).not.toMatch(/create policy "ai_generations_(update|delete)/);
+  });
+
+  it('un hábito sólo se puede marcar una vez al día', () => {
+    // Sin este índice la racha se inflaría marcando el mismo día varias veces.
+    expect(sql).toMatch(
+      /create unique index if not exists habit_completions_unique[\s\S]*?\(habit_id, completed_on\)/,
+    );
+  });
+
+  it('las sesiones de estudio no se pueden editar una vez guardadas', () => {
+    // Se pueden borrar (por un cronómetro olvidado), pero no maquillar.
+    expect(sql).not.toMatch(/create policy "study_sessions_update/);
+  });
+
+  it('las marcas de hábito comprueban que el hábito es tuyo al insertar', () => {
+    const policy = sql.match(/create policy "habit_completions_insert_own"[\s\S]*?;/)?.[0];
+    expect(policy).toBeTruthy();
+    expect(policy).toContain('from public.habits');
   });
 
   it('el consumo de IA no guarda prompts ni respuestas', () => {

@@ -1,21 +1,27 @@
 import type { Metadata } from 'next';
-import { FlameIcon } from 'lucide-react';
-import { UpcomingSection } from '@/components/shared/upcoming-section';
+import { HabitsView } from '@/components/habits/habits-view';
+import { todayIso } from '@/lib/date';
+import { requireSessionUser } from '@/services/auth/session';
+import { remainingFor } from '@/services/billing/entitlements';
+import { getUserUsage } from '@/services/billing/subscription.service';
+import { listHabitsWithProgress } from '@/services/habits/habit.service';
 
 export const metadata: Metadata = { title: 'Hábitos', robots: { index: false, follow: false } };
 
-export default function HabitsPage() {
+export default async function HabitsPage() {
+  const { user, profile } = await requireSessionUser();
+  const today = todayIso(profile?.timezone ?? undefined);
+
+  const [habits, usage] = await Promise.all([
+    listHabitsWithProgress(user.id, today),
+    getUserUsage(user.id),
+  ]);
+
   return (
-    <UpcomingSection
-      icon={FlameIcon}
-      title="Hábitos"
-      description="Lo pequeño y constante, que es lo que acaba marcando la diferencia."
-      bullets={[
-        'Crear hábitos con nombre, frecuencia y objetivo',
-        'Marcarlos cada día desde el panel',
-        'Ver tu racha actual y tu progreso semanal',
-        'Complementar el plan sin robarle protagonismo',
-      ]}
+    <HabitsView
+      habits={habits}
+      today={today}
+      remaining={remainingFor(usage, 'create_habit')}
     />
   );
 }

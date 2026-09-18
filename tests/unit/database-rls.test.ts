@@ -34,6 +34,7 @@ describe('migraciones de Supabase', () => {
   it('crea todas las tablas esperadas', () => {
     expect(tableNames().sort()).toEqual(
       [
+        'ai_generations',
         'analytics_events',
         'exams',
         'feedback',
@@ -63,6 +64,20 @@ describe('migraciones de Supabase', () => {
 
   it('el histórico de versiones del plan es inmutable', () => {
     expect(sql).not.toMatch(/create policy "study_plan_versions_(update|delete)/);
+  });
+
+  it('el registro de consumo de IA es inmutable', () => {
+    // Si el usuario pudiera borrar sus generaciones, los límites del plan
+    // gratuito no valdrían nada.
+    expect(sql).not.toMatch(/create policy "ai_generations_(update|delete)/);
+  });
+
+  it('el consumo de IA no guarda prompts ni respuestas', () => {
+    const table = sql.match(/create table if not exists public\.ai_generations[\s\S]*?\n\);/)?.[0];
+    expect(table).toBeTruthy();
+    for (const forbidden of ['prompt', 'response', 'content', 'completion']) {
+      expect(table, `la tabla guarda "${forbidden}"`).not.toContain(forbidden);
+    }
   });
 
   it('una tarea completada siempre guarda cuándo se completó', () => {

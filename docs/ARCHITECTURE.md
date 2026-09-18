@@ -81,12 +81,15 @@ services/
 ├── auth/       session.ts (guardias de servidor) · auth.actions.ts
 ├── profile/    profile.service.ts · onboarding.actions.ts · profile.actions.ts
 ├── exams/      exam.service.ts · exam.actions.ts
-├── planning/   plan.schema.ts · scheduler.ts · plan.service.ts · plan.actions.ts
+├── ai/         provider.ts · index.ts (fábrica) · plan-prompt.ts
+│              plan-sanitizer.ts · plan-generator.ts · usage.service.ts
+│              providers/{anthropic,openai,gemini}.provider.ts
+├── planning/   plan.schema.ts · plan-summary.ts · scheduler.ts
+│              plan.service.ts · plan.actions.ts
 ├── tasks/      task.service.ts · task.actions.ts
 ├── progress/   progress.ts (puro) · progress.service.ts
 ├── billing/    entitlements.ts · subscription.service.ts
-├── analytics/  events.ts (catálogo cerrado) · track.ts
-└── ai/         (fase 3)
+└── analytics/  events.ts (catálogo cerrado) · track.ts
 ```
 
 - `*.service.ts` — lectura y escritura de datos. Devuelve tipos del dominio o
@@ -196,17 +199,74 @@ mueve el puntero `study_plans.current_version_id`. Las versiones anteriores no
 se borran nunca: son el histórico auditable. El progreso se calcula siempre
 sobre la versión vigente.
 
-### IA (fase 3)
+### IA
 
-- Abstracción `AIProvider` con implementaciones `OpenAIProvider`,
-  `AnthropicProvider` y `GeminiProvider`. La aplicación depende de la
-  interfaz, no del proveedor.
-- La IA devuelve **JSON estructurado**, nunca HTML, y se valida con
-  `aiPlanResponseSchema`. Si no cumple, no se guarda nada: se registra el
-  error y se ofrece reintentar con el planificador local como respaldo.
-- Las API keys se leen sólo en servidor. Cada generación se registrará en
-  `ai_generations` para controlar coste y aplicar los límites de
-  `config/limits.ts`.
+Abstracción `AIProvider` (`services/ai/provider.ts`): recibe un JSON Schema y
+devuelve JSON parseado. Anthropic está implementado; OpenAI y Gemini son
+huecos con la misma firma. La fábrica (`services/ai/index.ts`) es el único
+sitio que sabe qué proveedores existen, y devuelve `null` si no hay clave —
+sin clave, Planora sigue funcionando con su planificador.
+
+El generador (`plan-generator.ts`) encadena:
+
+```
+plan local (siempre disponible)
+    │
+    ├─ ¿hay proveedor? ─no─► plan local, motivo: ai_disabled
+    │
+    └─sí─► prompt ─► IA ─► Zod ─► saneado ─► ¿cubre el temario?
+                      │       │        │              │
+                   error   no cumple  null           no
+                      └───────┴────────┴──────────────┴──► plan local + motivo
+```
+
+Cada intento se registra en `ai_generations` con su resultado. Sólo los
+intentos con éxito gastan cuota: un fallo del proveedor no se le cobra al
+usuario. Dos intentos como máximo, y sólo se reintenta si el error es
+temporal (saturación, timeout); un error de credenciales no mejora
+reintentando.
+
+**El origen del plan se guarda** en `study_plan_versions.source` y se muestra
+siempre en la interfaz. Un plan hecho por el planificador local no se disfraza
+de plan de IA.
+
+#### Decisiones de la integración
+
+- **Structured outputs** (`output_config.format`) en lugar de pedir JSON por
+  texto: la respuesta ya llega con la forma correcta.
+- **Esfuerzo `medium` por defecto**, configurable con `AI_EFFORT`. El alumno
+  está esperando en el móvil, el plan se valida y se corrige después, y hay
+  respaldo local. Quien priorice calidad sobre latencia sube a `high`.
+- **JSON Schema escrito a mano** en vez de convertido desde Zod: sirve igual
+  para los tres proveedores, que aceptan JSON Schema con conversores distintos.
+  La validación fuerte la hace Zod después.
+- **Fallback de rechazo del servidor** activado por defecto
+  (`AI_REFUSAL_FALLBACK`): si los clasificadores declinan, Anthropic reintenta
+  con otro modelo dentro de la misma llamada. Usa API en beta, así que se
+  puede apagar sin perder nada — el respaldo local sigue ahí.
+
+## 9c. Inyección de prompts
+
+Los nombres de temas los escribe el usuario y acaban en el prompt. Tres capas,
+en orden de importancia inversa:
+
+1. El prompt de sistema no contiene datos de usuario.
+2. Los datos van en un bloque delimitado, saneados a una sola línea sin
+   caracteres de control, con instrucción explícita de tratarlos como datos.
+3. **`plan-sanitizer.ts`**, que es la que de verdad cierra el problema. El plan
+   saneado sólo puede contener:
+   - fechas de la lista de días disponibles calculada por Planora;
+   - ids de temas que pertenecen a ese examen;
+   - duraciones dentro del presupuesto diario del usuario;
+   - **etiquetas que salen del temario real o de una lista fija** — el texto
+     libre del modelo nunca llega a la pantalla.
+
+   Todo lo demás se corrige o se descarta, y si no queda plan aprovechable se
+   usa el planificador local.
+
+Es una función pura con 23 pruebas que simulan respuestas hostiles: fechas
+inventadas, ids de otro usuario, phishing en el nombre del tema, días que se
+pasan del tiempo disponible.
 
 ## 9b. Límites Free/Pro
 
@@ -236,7 +296,7 @@ alimentada por el webhook de Stripe.
 |------|-----------|--------|
 | 1 | Fundación, branding, landing, auth, onboarding, panel básico | **Completada** |
 | 2 | Exámenes, temas, planes, tareas, panel real, progreso | **Completada** |
-| 3 | `AIProvider`, generación con IA, límites de IA, `ai_generations` | Pendiente |
+| 3 | `AIProvider`, generación con IA, límites, `ai_generations` | **Completada** |
 | 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | Pendiente |
 | 5 | Stripe, suscripciones, webhook, portal, paywalls | Pendiente |
 | 6 | Responsive fino, SEO, PWA, analítica, feedback, seguridad | Pendiente |
@@ -260,6 +320,15 @@ alimentada por el webhook de Stripe.
   plan por un error del modelo.
 - **Reordenar temas con botones y no arrastrando**: funciona con teclado, con
   lector de pantalla y con el dedo en un móvil, que es donde más se va a usar.
+- **La IA se añade encima del planificador local, no lo sustituye.** El
+  planificador es la garantía de que nadie se queda sin plan: por fallo del
+  proveedor, por cuota agotada o por una respuesta que no cumple las reglas.
+  Es también lo que permite que el plan gratuito sea generoso sin que la
+  factura de IA se dispare.
+- **Agotar la cuota de IA no bloquea al usuario.** Se genera el plan con el
+  planificador local, se dice con claridad y se ofrece Pro. Bloquear a alguien
+  que quiere estudiar para venderle una suscripción es exactamente el tipo de
+  patrón que el producto quiere evitar.
 - **`user_id` duplicado en `topics` y `study_tasks`** aunque se pudiera
   deducir por el examen: permite políticas RLS sin JOIN en cada consulta. Las
   políticas de inserción comprueban además la propiedad del examen, así que la

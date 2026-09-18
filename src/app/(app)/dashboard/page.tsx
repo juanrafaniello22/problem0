@@ -31,6 +31,12 @@ import { getOverallProgress } from '@/services/progress/progress.service';
 import { shouldSuggestReplan } from '@/services/progress/progress';
 import { listOverdueTasks, listTasksForDate } from '@/services/tasks/task.service';
 
+/**
+ * La generación del plan con IA puede tardar unos segundos, así que la
+ * server action necesita más margen que el que da Vercel por defecto.
+ */
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: 'Panel',
   robots: { index: false, follow: false },

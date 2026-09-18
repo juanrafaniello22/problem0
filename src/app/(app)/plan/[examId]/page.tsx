@@ -5,10 +5,15 @@ import {
   AlertTriangleIcon,
   CalendarDaysIcon,
   ClockIcon,
+  InfoIcon,
   LayersIcon,
   SparklesIcon,
 } from 'lucide-react';
 import { PlanReady } from '@/components/plan/plan-ready';
+import {
+  PlanSourceBadge,
+  planSourceExplanation,
+} from '@/components/plan/plan-source-badge';
 import { PlanTimeline } from '@/components/plan/plan-timeline';
 import { ReplanButton } from '@/components/plan/replan-button';
 import { ExamActions } from '@/components/plan/exam-actions';
@@ -25,6 +30,12 @@ import { getExamWithTopics } from '@/services/exams/exam.service';
 import { getCurrentPlan } from '@/services/planning/plan.service';
 import { computeProgress, shouldSuggestReplan } from '@/services/progress/progress';
 import { DIFFICULTIES, WEEKDAYS } from '@/validation/exam';
+
+/**
+ * La generación del plan con IA puede tardar unos segundos, así que la
+ * server action necesita más margen que el que da Vercel por defecto.
+ */
+export const maxDuration = 60;
 
 export const metadata: Metadata = { title: 'Examen', robots: { index: false, follow: false } };
 
@@ -67,6 +78,12 @@ export default async function ExamDetailPage({
     (task) => task.status === 'pending' && task.type !== 'break',
   );
 
+  const sourceExplanation = current
+    ? planSourceExplanation(
+        typeof summary?.fallbackReason === 'string' ? summary.fallbackReason : undefined,
+      )
+    : null;
+
   return (
     <div className="flex flex-col gap-6">
       {created === '1' && current && (
@@ -75,6 +92,7 @@ export default async function ExamDetailPage({
           totalSessions={Number(summary?.totalSessions ?? 0)}
           totalStudyMinutes={Number(summary?.totalStudyMinutes ?? 0)}
           topicsCovered={Number(summary?.topicsCovered ?? topics.length)}
+          source={current.version.source}
           firstTask={
             firstPendingTask
               ? {
@@ -110,6 +128,13 @@ export default async function ExamDetailPage({
           <ExamActions examId={exam.id} status={exam.status} />
         </div>
       </header>
+
+      {sourceExplanation && (
+        <Alert variant="default">
+          <InfoIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <AlertDescription>{sourceExplanation}</AlertDescription>
+        </Alert>
+      )}
 
       {warnings.length > 0 && (
         <div className="flex flex-col gap-2">
@@ -168,10 +193,13 @@ export default async function ExamDetailPage({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Tu plan día a día</h2>
           {current && (
-            <span className="text-xs text-muted-foreground">
-              Versión {current.version.version} ·{' '}
-              {progress.completedTasks}/{progress.totalTasks} sesiones hechas
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <PlanSourceBadge source={current.version.source} />
+              <span className="text-xs text-muted-foreground">
+                Versión {current.version.version} ·{' '}
+                {progress.completedTasks}/{progress.totalTasks} sesiones hechas
+              </span>
+            </div>
           )}
         </div>
 

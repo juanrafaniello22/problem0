@@ -13,7 +13,9 @@ import { generatePlanAction } from '@/services/planning/plan.actions';
 /**
  * Reorganiza el plan con los días que quedan.
  *
- * No borra nada: crea una versión nueva y el histórico se conserva.
+ * No borra nada: crea una versión nueva y el histórico se conserva. Si se ha
+ * agotado la cuota mensual de IA, el plan se rehace igual con el planificador
+ * de Planora y se ofrece Pro — sin dejar al estudiante sin plan.
  */
 export function ReplanButton({
   examId,
@@ -30,20 +32,33 @@ export function ReplanButton({
       const result = await generatePlanAction(examId, 'replan');
 
       if (!result.ok) {
-        if (result.code === 'limit_reached') {
-          setPaywall(result.error);
-          return;
-        }
         toast.error(result.error);
         return;
       }
 
-      const { summary, warnings } = result.data;
-      toast.success(
-        `Plan reorganizado: ${summary.totalSessions} sesiones en ${summary.totalDays} días.`,
-      );
+      const { summary, warnings, source, quotaExhausted } = result.data;
+
+      if (source === 'ai') {
+        toast.success(
+          `Plan reorganizado con IA: ${summary.totalSessions} sesiones en ${summary.totalDays} días.`,
+        );
+      } else {
+        toast.success(
+          `Plan reorganizado: ${summary.totalSessions} sesiones en ${summary.totalDays} días.`,
+        );
+      }
+
       for (const warning of warnings) toast.warning(warning, { duration: 8000 });
+
       router.refresh();
+
+      // El aviso de límite llega después de que el usuario tenga su plan:
+      // primero el valor, luego la oferta.
+      if (quotaExhausted) {
+        setPaywall(
+          'Has usado tus generaciones con IA de este mes. Hemos reorganizado tu plan con el planificador de Planora, que funciona sin límite. Con Pro vuelves a tener IA.',
+        );
+      }
     });
   };
 

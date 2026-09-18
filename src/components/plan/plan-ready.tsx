@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowRightIcon, CheckCircle2Icon, XIcon } from 'lucide-react';
+import { PlanSourceBadge } from '@/components/plan/plan-source-badge';
 import { Button } from '@/components/ui/button';
 import { routes } from '@/config/routes';
 import { formatMinutes } from '@/lib/date';
+import type { PlanSource } from '@/types/database';
 
 /**
  * Confirmación tras generar el primer plan.
@@ -19,12 +21,14 @@ export function PlanReady({
   totalStudyMinutes,
   topicsCovered,
   firstTask,
+  source,
 }: {
   totalDays: number;
   totalSessions: number;
   totalStudyMinutes: number;
   topicsCovered: number;
   firstTask?: { label: string; minutes: number; date: string } | null;
+  source: PlanSource;
 }) {
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
@@ -52,8 +56,11 @@ export function PlanReady({
           <CheckCircle2Icon className="size-5" aria-hidden />
         </span>
         <div>
-          <h2 className="font-display text-xl font-bold">Tu plan está listo</h2>
-          <p className="text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-xl font-bold">Tu plan está listo</h2>
+            <PlanSourceBadge source={source} />
+          </div>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             Ya sabes exactamente qué estudiar cada día hasta el examen.
           </p>
         </div>

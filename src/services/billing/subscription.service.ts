@@ -3,6 +3,7 @@ import 'server-only';
 import type { PlanId } from '@/config/pricing';
 import { createClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
+import { countGenerationsThisMonth } from '@/services/ai/usage.service';
 import type { UserUsage } from './entitlements';
 
 /**
@@ -37,13 +38,17 @@ export async function countActiveExams(userId: string): Promise<number> {
 }
 
 export async function getUserUsage(userId: string): Promise<UserUsage> {
-  const [plan, activeExams] = await Promise.all([getUserPlan(userId), countActiveExams(userId)]);
+  const [plan, activeExams, aiGenerationsThisMonth] = await Promise.all([
+    getUserPlan(userId),
+    countActiveExams(userId),
+    countGenerationsThisMonth(userId),
+  ]);
 
   return {
     plan,
     activeExams,
-    // Se rellenarán en las fases 3 y 4, cuando existan sus tablas.
-    aiGenerationsThisMonth: 0,
+    aiGenerationsThisMonth,
+    // Se rellenará en la fase 4, cuando exista la tabla de hábitos.
     activeHabits: 0,
   };
 }

@@ -204,26 +204,65 @@ La firma se valida siempre antes de procesar nada.
 
 ## 8. IA
 
-*Se integra en la fase 3.*
-
-La aplicación no depende de un proveedor concreto: habla con una interfaz
+La aplicación no depende de un proveedor concreto: habla con la interfaz
 `AIProvider` y elige la implementación según `AI_PROVIDER`.
 
 ```
-AI_PROVIDER=anthropic     # openai | anthropic | gemini
-AI_API_KEY=...
-AI_MODEL=claude-sonnet-5
+AI_PROVIDER=anthropic     # anthropic | openai | gemini
+AI_API_KEY=sk-ant-xxx
+AI_MODEL=claude-opus-5
+AI_EFFORT=medium          # low | medium | high
+AI_REFUSAL_FALLBACK=true
+```
+
+Hoy está implementado **Anthropic (Claude)**. OpenAI y Gemini son huecos
+preparados: implementar su `generateJson` es lo único que hay que tocar.
+
+**Planora funciona sin IA.** Si no configuras `AI_API_KEY`, los planes los
+genera su propio planificador. La IA los mejora; no es un requisito para que
+la aplicación sirva.
+
+### Cómo se genera un plan
+
+```
+Examen + temas + disponibilidad
+        │
+        ├─► IA  ──► JSON estructurado ──► Zod ──► saneado ──► ¿cubre el temario?
+        │                                   │         │              │
+        │                                   ✗         ✗              ✗
+        └─► Planificador de Planora ◄───────┴─────────┴──────────────┘
 ```
 
 Reglas que no se negocian:
 
-- Las API keys viven **sólo en servidor**. Nunca llegan al navegador.
-- La IA devuelve **JSON estructurado**, nunca HTML. Se valida con Zod.
-- Si la respuesta no cumple el esquema no se guarda el plan: se registra el
-  error y se ofrece reintentar con un mensaje comprensible.
-- Cada generación se registra en `ai_generations` para controlar coste.
-- Los límites por plan están en `src/config/limits.ts`:
-  3 generaciones al mes en Free.
+- Las API keys viven **sólo en servidor**. Nunca llegan al navegador, y ni la
+  clave ni tu identificador de usuario entran en el prompt.
+- La IA devuelve **JSON estructurado** (`output_config.format`), nunca HTML.
+- La respuesta se valida con Zod **y** se contrasta con las fechas y los temas
+  reales. Si la IA se inventa un tema, propone un día que no has marcado o se
+  pasa de tu tiempo diario, eso se corrige o se descarta.
+- Si nada de eso se puede salvar, el plan lo hace el planificador local y la
+  aplicación **te dice quién lo ha hecho**.
+- Cada llamada se registra en `ai_generations` (sólo metadatos: nunca el
+  prompt ni la respuesta) para controlar el coste.
+- Los límites por plan están en `src/config/limits.ts`: 3 generaciones al mes
+  en Free. Agotarlas no te bloquea — sigues creando y reorganizando planes con
+  el planificador local.
+- Rate limiting por usuario en `src/config/limits.ts` (`rateLimits.aiGeneration`).
+
+### Protección contra inyección de prompts
+
+Los nombres de temas los escribe el usuario, así que van al modelo. Tres capas:
+
+1. El prompt de sistema sólo lleva instrucciones nuestras.
+2. Los datos del usuario van en un bloque delimitado, en una sola línea y sin
+   caracteres de control, etiquetados como datos.
+3. **La capa que de verdad cuenta:** el saneado
+   (`src/services/ai/plan-sanitizer.ts`). Aunque el modelo obedeciera una orden
+   colada en un nombre de tema, sólo podría devolver fechas de tu lista, temas
+   de tu examen y duraciones dentro de tu presupuesto. El texto que se muestra
+   en pantalla sale siempre de tu temario o de una lista fija de etiquetas,
+   nunca del modelo.
 
 ## 9. Desarrollo local
 
@@ -279,6 +318,14 @@ Qué se cubre hoy:
   nunca programa más minutos de los disponibles, que respeta los días
   marcados, que no planifica el día del examen, que reserva repaso, que
   avisa cuando no cabe el temario y que es determinista.
+- **Saneado de la IA** (`tests/unit/plan-sanitizer.test.ts`) — 23
+  comprobaciones con respuestas hostiles o defectuosas: fechas inventadas,
+  temas de otro examen, texto de phishing en los nombres, días que se pasan
+  del tiempo disponible.
+- **Generación completa** (`tests/unit/plan-generator.test.ts`) — la cadena
+  IA → validación → saneado → respaldo, con un proveedor simulado. Incluye la
+  comprobación que más importa: pase lo que pase, el estudiante acaba con un
+  plan utilizable.
 - **Progreso** (`tests/unit/progress.test.ts`) — porcentajes, retrasos y
   progreso por tema.
 - **Límites Free/Pro** (`tests/unit/entitlements.test.ts`) — qué puede hacer
@@ -340,7 +387,7 @@ o a `localhost` si no está definida.
 |------|-----------|--------|
 | 1 | Fundación, branding, landing, autenticación, onboarding, panel básico | ✅ Completada |
 | 2 | Exámenes, asignaturas, temas, tareas, panel real, progreso básico | ✅ Completada |
-| 3 | `AIProvider`, generación de planes con IA, límites de IA | ⏳ |
+| 3 | `AIProvider`, generación de planes con IA, límites y consumo | ✅ Completada |
 | 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | ⏳ |
 | 5 | Stripe, suscripciones, webhook, portal, Free/Pro, paywalls | ⏳ |
 | 6 | Responsive fino, SEO, PWA, analítica, feedback, seguridad | ⏳ |
@@ -350,12 +397,11 @@ Las secciones todavía no construidas (Focus y Hábitos) muestran un estado
 «en construcción» explícito. No hay botones que aparenten funcionar sin
 backend detrás.
 
-**Nota sobre la fase 3:** Planora ya genera planes, pero con un planificador
-determinista propio en lugar de con IA. Reparte los temas entre tus días
-disponibles, respeta tu tiempo diario, reserva repaso y avisa cuando no cabe
-todo el temario. En la fase 3 se antepone el proveedor de IA usando el mismo
-contrato (`src/services/planning/plan.schema.ts`), y este planificador se
-queda como red de seguridad para cuando la IA falle o se agote la cuota.
+**Nota sobre la IA:** Planora genera los planes con IA cuando hay una clave
+configurada, y con su propio planificador cuando no la hay, cuando la IA falla
+o cuando se agota la cuota del mes. Ambos producen el mismo formato de plan
+(`src/services/planning/plan.schema.ts`), así que son intercambiables. La
+aplicación siempre indica en pantalla quién ha hecho cada plan.
 
 La arquitectura y las decisiones de diseño están documentadas en
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -378,8 +424,11 @@ Estado actual de la fase 1:
 - [x] Cabeceras de seguridad (`nosniff`, `Referrer-Policy`, `X-Frame-Options`)
 - [x] Aislamiento entre usuarios verificado contra PostgreSQL real (`npm run verify:rls`)
 - [x] Límites Free/Pro centralizados en `canUseFeature`, aplicados en servidor
+- [x] Rate limiting en la generación con IA, por usuario
+- [x] Prompts endurecidos contra inyección, con saneado de la respuesta
+- [x] La IA nunca recibe claves ni identificadores de usuario
+- [x] `ai_generations` no guarda prompts ni respuestas, sólo metadatos
 - [ ] Webhook de Stripe validado por firma — *fase 5*
-- [ ] Rate limiting en los endpoints de IA — *fase 3*
 - [ ] Rate limiting distribuido (hoy es por instancia) — antes de escalar
 
 ## Aviso legal

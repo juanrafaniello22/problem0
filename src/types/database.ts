@@ -32,6 +32,10 @@ export type TaskStatus = 'pending' | 'completed' | 'skipped';
 
 export type PlanSource = 'ai' | 'deterministic';
 
+export type AiGenerationType = 'plan' | 'replan';
+
+export type AiGenerationStatus = 'success' | 'invalid_response' | 'provider_error';
+
 export type ProfileRow = {
   id: string;
   email: string | null;
@@ -153,6 +157,22 @@ export type StudyTaskRow = {
   updated_at: string;
 };
 
+export type AiGenerationRow = {
+  id: string;
+  user_id: string;
+  exam_id: string | null;
+  type: AiGenerationType;
+  status: AiGenerationStatus;
+  provider: string;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cached_input_tokens: number | null;
+  duration_ms: number | null;
+  error_code: string | null;
+  created_at: string;
+};
+
 type Insertable<Row, Optional extends keyof Row> = Omit<Row, Optional> & Partial<Pick<Row, Optional>>;
 
 export type Database = {
@@ -245,6 +265,23 @@ export type Database = {
         Update: Partial<StudyPlanVersionRow>;
         Relationships: [];
       };
+      ai_generations: {
+        Row: AiGenerationRow;
+        Insert: Insertable<
+          AiGenerationRow,
+          | 'id'
+          | 'exam_id'
+          | 'model'
+          | 'input_tokens'
+          | 'output_tokens'
+          | 'cached_input_tokens'
+          | 'duration_ms'
+          | 'error_code'
+          | 'created_at'
+        >;
+        Update: Partial<AiGenerationRow>;
+        Relationships: [];
+      };
       study_tasks: {
         Row: StudyTaskRow;
         Insert: Insertable<
@@ -274,6 +311,8 @@ export type Database = {
       task_type: TaskType;
       task_status: TaskStatus;
       plan_source: PlanSource;
+      ai_generation_type: AiGenerationType;
+      ai_generation_status: AiGenerationStatus;
     };
     CompositeTypes: Record<string, never>;
   };

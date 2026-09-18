@@ -11,6 +11,12 @@ import { getUserUsage } from '@/services/billing/subscription.service';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { SparklesIcon } from 'lucide-react';
 
+/**
+ * La generación del plan con IA puede tardar unos segundos, así que la
+ * server action necesita más margen que el que da Vercel por defecto.
+ */
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: 'Nuevo examen',
   robots: { index: false, follow: false },

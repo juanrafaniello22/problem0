@@ -10,6 +10,12 @@ import { requireSessionUser } from '@/services/auth/session';
 import { getExamWithTopics } from '@/services/exams/exam.service';
 import { listSubjects } from '@/services/profile/profile.service';
 
+/**
+ * La generación del plan con IA puede tardar unos segundos, así que la
+ * server action necesita más margen que el que da Vercel por defecto.
+ */
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: 'Editar examen',
   robots: { index: false, follow: false },

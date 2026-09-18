@@ -59,6 +59,10 @@ const serverSchema = z.object({
   AI_PROVIDER: z.enum(['openai', 'anthropic', 'gemini']).optional(),
   AI_API_KEY: z.string().min(1).optional(),
   AI_MODEL: z.string().min(1).optional(),
+  AI_EFFORT: z.enum(['low', 'medium', 'high']).optional(),
+  // Fallback de rechazo del servidor de Anthropic. Usa API en beta: se puede
+  // desactivar con "false" sin que Planora deje de funcionar.
+  AI_REFUSAL_FALLBACK: z.enum(['true', 'false']).optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 

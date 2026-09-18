@@ -2,7 +2,7 @@
   "name": "planora",
   "version": "0.1.0",
   "private": true,
-  "description": "Planora \u2014 Tu plan de estudio. Creado por IA.",
+  "description": "Planora — Tu plan de estudio. Creado por IA.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -15,6 +15,7 @@
     "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-checkbox": "^1.3.3",

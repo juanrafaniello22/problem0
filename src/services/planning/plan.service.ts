@@ -120,6 +120,8 @@ export interface SavePlanOptions {
   source: PlanSource;
   /** Motivo de la versión: `initial`, `replan`, `exam_updated`… */
   reason: string;
+  /** Por qué se usó el planificador local en lugar de la IA, si aplica. */
+  fallbackReason?: string;
 }
 
 /**
@@ -177,7 +179,11 @@ export async function savePlan(
       version: nextVersion,
       source: options.source,
       reason: options.reason.slice(0, 60),
-      summary: { ...plan.summary, warnings: plan.warnings },
+      summary: {
+        ...plan.summary,
+        warnings: plan.warnings,
+        fallbackReason: options.fallbackReason ?? null,
+      },
     })
     .select('*')
     .single();

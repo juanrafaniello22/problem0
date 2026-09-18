@@ -13,6 +13,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // `server-only` lanza un error fuera de un Server Component. En los
+      // tests lo sustituimos por el módulo vacío que el propio paquete
+      // expone para el runtime de servidor de React.
+      'server-only': fileURLToPath(new URL('./node_modules/server-only/empty.js', import.meta.url)),
     },
   },
 });

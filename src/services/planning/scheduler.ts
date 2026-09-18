@@ -1,6 +1,7 @@
 import { addDays, daysBetween, isoWeekday, type IsoDate } from '@/lib/date';
 import type { ExamDifficulty } from '@/types/database';
-import type { GeneratedPlan, PlanDay, PlanTask, PlanSummary } from './plan.schema';
+import { summarizePlan } from './plan-summary';
+import type { GeneratedPlan, PlanDay, PlanTask } from './plan.schema';
 
 /**
  * Planificador determinista.
@@ -309,28 +310,6 @@ function withBreaks(days: PlanDay[]): PlanDay[] {
   });
 }
 
-function summarize(days: PlanDay[], topicsTotal: number): PlanSummary {
-  const studyDays = days.filter((day) => day.tasks.some((task) => task.type === 'study')).length;
-  const reviewDays = days.filter(
-    (day) => day.tasks.length > 0 && day.tasks.every((task) => task.type !== 'study'),
-  ).length;
-
-  const realTasks = days.flatMap((day) => day.tasks).filter((task) => task.type !== 'break');
-  const coveredTopics = new Set(
-    realTasks.filter((task) => task.topicId !== null).map((task) => task.topicId),
-  );
-
-  return {
-    totalDays: days.length,
-    studyDays,
-    reviewDays,
-    totalSessions: realTasks.length,
-    totalStudyMinutes: realTasks.reduce((sum, task) => sum + task.duration, 0),
-    topicsCovered: coveredTopics.size,
-    topicsTotal,
-  };
-}
-
 export function buildStudyPlan(input: SchedulerInput): GeneratedPlan {
   const profile = difficultyProfiles[input.difficulty];
   const pendingTopics = input.topics.filter((topic) => !topic.completed);
@@ -344,13 +323,13 @@ export function buildStudyPlan(input: SchedulerInput): GeneratedPlan {
         ? 'La fecha del examen ya ha pasado o es hoy, así que no hay días que planificar.'
         : 'No has marcado ningún día disponible antes del examen. Revisa tus días de estudio.',
     );
-    return { days: [], warnings, summary: summarize([], input.topics.length) };
+    return { days: [], warnings, summary: summarizePlan([], input.topics.length) };
   }
 
   if (pendingTopics.length === 0) {
     const reviewDays = withBreaks(buildReviewDays(dates, input.topics, input.dailyMinutes));
     warnings.push('Ya has completado todos los temas: el plan se centra en repasar.');
-    return { days: reviewDays, warnings, summary: summarize(reviewDays, input.topics.length) };
+    return { days: reviewDays, warnings, summary: summarizePlan(reviewDays, input.topics.length) };
   }
 
   // Se reservan los últimos días para repaso, pero sólo si hay margen.
@@ -404,5 +383,5 @@ export function buildStudyPlan(input: SchedulerInput): GeneratedPlan {
     );
   }
 
-  return { days, warnings, summary: summarize(days, input.topics.length) };
+  return { days, warnings, summary: summarizePlan(days, input.topics.length) };
 }

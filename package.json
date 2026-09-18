@@ -2,7 +2,7 @@
   "name": "planora",
   "version": "0.1.0",
   "private": true,
-  "description": "Planora — Tu plan de estudio. Creado por IA.",
+  "description": "Planora \u2014 Tu plan de estudio. Creado por IA.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:rls": "./scripts/verify-rls.sh",
+    "verify:bundle": "./scripts/verify-bundle.sh",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "react-hook-form": "^7.88.0",
     "server-only": "^0.0.1",
     "sonner": "^2.0.7",
+    "stripe": "^22.6.2",
     "tailwind-merge": "^3.3.1",
     "zod": "^4.6.5"
   },

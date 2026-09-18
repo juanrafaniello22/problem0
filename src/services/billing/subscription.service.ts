@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
 import { countGenerationsThisMonth } from '@/services/ai/usage.service';
 import { countActiveHabits } from '@/services/habits/habit.service';
+import type { SubscriptionRow } from '@/types/database';
+import { summarizeSubscription, type SubscriptionSummary } from './access';
 import type { UserUsage } from './entitlements';
 
 /**
@@ -15,10 +17,41 @@ import type { UserUsage } from './entitlements';
  * aplicación ya pregunta por aquí.
  */
 
-export async function getUserPlan(_userId: string): Promise<PlanId> {
-  // La fuente de verdad del acceso Pro será el webhook de Stripe, nunca el
-  // cliente ni una visita a /success.
-  return 'free';
+/**
+ * Suscripción del usuario, leída con su propia sesión.
+ *
+ * La tabla no tiene políticas de escritura, así que leerla es seguro: lo que
+ * haya ahí lo ha puesto el webhook de Stripe y nadie más.
+ */
+export async function getSubscriptionRow(userId: string): Promise<SubscriptionRow | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    logger.error('No se pudo leer la suscripción', { code: error.code });
+    return null;
+  }
+
+  return data ?? null;
+}
+
+/** Estado completo de la suscripción, ya interpretado. */
+export async function getSubscriptionSummary(userId: string): Promise<SubscriptionSummary> {
+  return summarizeSubscription(await getSubscriptionRow(userId));
+}
+
+/**
+ * Plan del usuario.
+ *
+ * La fuente de verdad es la tabla `subscriptions`, que sólo escribe el webhook
+ * de Stripe. Ni el cliente ni una visita a /success pueden alterarla.
+ */
+export async function getUserPlan(userId: string): Promise<PlanId> {
+  return (await getSubscriptionSummary(userId)).plan;
 }
 
 export async function countActiveExams(userId: string): Promise<number> {

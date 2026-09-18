@@ -40,6 +40,14 @@ export type HabitFrequency = 'daily' | 'weekdays' | 'custom';
 
 export type SessionStatus = 'completed' | 'abandoned';
 
+export type SubscriptionStatus =
+  | 'free'
+  | 'trialing'
+  | 'active'
+  | 'past_due'
+  | 'canceled'
+  | 'incomplete';
+
 export type ProfileRow = {
   id: string;
   email: string | null;
@@ -217,6 +225,25 @@ export type StudySessionRow = {
   created_at: string;
 };
 
+export type SubscriptionRow = {
+  user_id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  status: SubscriptionStatus;
+  price_id: string | null;
+  /** Hasta cuándo está pagado, en ISO. Decide el acceso tras cancelar. */
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StripeEventRow = {
+  id: string;
+  type: string;
+  processed_at: string;
+};
+
 type Insertable<Row, Optional extends keyof Row> = Omit<Row, Optional> & Partial<Pick<Row, Optional>>;
 
 export type Database = {
@@ -309,6 +336,28 @@ export type Database = {
         Update: Partial<StudyPlanVersionRow>;
         Relationships: [];
       };
+      subscriptions: {
+        Row: SubscriptionRow;
+        Insert: Insertable<
+          SubscriptionRow,
+          | 'stripe_customer_id'
+          | 'stripe_subscription_id'
+          | 'status'
+          | 'price_id'
+          | 'current_period_end'
+          | 'cancel_at_period_end'
+          | 'created_at'
+          | 'updated_at'
+        >;
+        Update: Partial<SubscriptionRow>;
+        Relationships: [];
+      };
+      stripe_events: {
+        Row: StripeEventRow;
+        Insert: Insertable<StripeEventRow, 'processed_at'>;
+        Update: Partial<StripeEventRow>;
+        Relationships: [];
+      };
       habits: {
         Row: HabitRow;
         Insert: Insertable<
@@ -391,6 +440,7 @@ export type Database = {
       ai_generation_status: AiGenerationStatus;
       habit_frequency: HabitFrequency;
       session_status: SessionStatus;
+      subscription_status: SubscriptionStatus;
     };
     CompositeTypes: Record<string, never>;
   };

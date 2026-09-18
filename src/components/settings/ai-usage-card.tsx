@@ -63,7 +63,7 @@ export function AiUsageCard({
               Sigues pudiendo crear y reorganizar planes: los hará el planificador de Planora.
             </p>
             <Button asChild size="sm" className="shrink-0">
-              <Link href={routes.pricing}>
+              <Link href={routes.upgrade}>
                 <SparklesIcon className="size-4" />
                 Ver Pro
               </Link>

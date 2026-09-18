@@ -57,6 +57,9 @@ insert into public.study_plan_versions (id, user_id, plan_id, version, source) v
 insert into public.analytics_events (user_id, name) values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'exam_created');
 
+insert into public.subscriptions (user_id, stripe_customer_id, status) values
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cus_bruno', 'active');
+
 insert into public.habits (id, user_id, name) values
   ('55555555-5555-4555-8555-555555555555', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Leer 20 páginas'),
   ('66666666-6666-4666-8666-666666666666', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Repasar vocabulario');
@@ -90,6 +93,10 @@ begin
     (select count(*) from public.habit_completions) = 1);
   perform pg_temp.ok('sólo ve sus sesiones de estudio',
     (select count(*) from public.study_sessions) = 1);
+  perform pg_temp.ok('no ve la suscripción de otro',
+    (select count(*) from public.subscriptions) = 0);
+  perform pg_temp.ok('no ve los eventos de Stripe',
+    (select count(*) from public.stripe_events) = 0);
 end $$;
 
 do $$
@@ -175,6 +182,43 @@ begin
     raise exception 'FALLO: pudo marcar el hábito de otro usuario';
   exception when insufficient_privilege then
     raise notice '  OK    no puede marcar el hábito de otro';
+  end;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Lo más importante del cobro: nadie se puede regalar Pro.
+-- ---------------------------------------------------------------------------
+do $$
+declare affected integer;
+begin
+  raise notice '';
+  raise notice 'Cobro · nadie se regala Pro';
+
+  begin
+    insert into public.subscriptions (user_id, status)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'active');
+    raise exception 'FALLO DE SEGURIDAD: pudo crearse una suscripción activa';
+  exception when insufficient_privilege then
+    raise notice '  OK    no puede crearse una suscripción';
+  end;
+
+  -- Sin política de update no se modifica ni la propia fila (no la ve).
+  update public.subscriptions set status = 'active'
+    where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  get diagnostics affected = row_count;
+  perform pg_temp.ok('no puede ascenderse a sí mismo a Pro', affected = 0);
+
+  update public.subscriptions set status = 'canceled'
+    where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  get diagnostics affected = row_count;
+  perform pg_temp.ok('no puede cancelar la suscripción de otro', affected = 0);
+
+  begin
+    insert into public.stripe_events (id, type)
+    values ('evt_falso', 'customer.subscription.updated');
+    raise exception 'FALLO: pudo escribir en los eventos de Stripe';
+  exception when insufficient_privilege then
+    raise notice '  OK    no puede tocar los eventos de Stripe';
   end;
 end $$;
 
@@ -273,6 +317,11 @@ begin
       where exam_id = '11111111-1111-4111-8111-111111111111') = 0
     and (select count(*) from public.study_tasks
       where exam_id = '11111111-1111-4111-8111-111111111111') = 0);
+
+  delete from auth.users where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  perform pg_temp.ok('al borrar la cuenta desaparece su suscripción',
+    (select count(*) from public.subscriptions
+      where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb') = 0);
 
   delete from auth.users where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   perform pg_temp.ok('al borrar la cuenta desaparece el perfil',

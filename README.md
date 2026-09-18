@@ -168,8 +168,8 @@ Además:
 
 ## 6. Stripe
 
-*Se integra en la fase 5. La configuración de precios ya está preparada en
-`src/config/pricing.ts`.*
+Los importes que ve el usuario salen de `src/config/pricing.ts`. Stripe sólo
+necesita saber cuánto cobrar.
 
 1. Crea una cuenta en <https://dashboard.stripe.com> y trabaja en **modo test**.
 2. **Productos → Añadir producto**: crea *Planora Pro*.
@@ -183,6 +183,19 @@ Además:
 Los importes que se muestran en la interfaz salen de
 `src/config/pricing.ts`. Si cambias un precio en Stripe, cámbialo también ahí:
 es el único sitio del código donde vive.
+
+### Qué crea la migración `0005_subscriptions.sql`
+
+| Tabla | Contenido |
+|-------|-----------|
+| `subscriptions` | Estado de la suscripción de cada usuario |
+| `stripe_events` | Eventos ya procesados, para no aplicarlos dos veces |
+
+**La propiedad de seguridad clave:** `subscriptions` tiene política de lectura
+pero **ninguna de escritura**. Un usuario puede ver su suscripción y nada más.
+Sólo el webhook, que usa la clave de servicio, puede escribirla. `npm run
+verify:rls` comprueba contra PostgreSQL real que nadie puede ascenderse a Pro
+por su cuenta.
 
 ## 7. Webhooks
 
@@ -207,7 +220,42 @@ En local, con la CLI de Stripe:
 stripe listen --forward-to localhost:3000/api/stripe/webhook
 ```
 
-La firma se valida siempre antes de procesar nada.
+Ese comando imprime un `whsec_...` de pruebas: ése es tu
+`STRIPE_WEBHOOK_SECRET` en local.
+
+### Cómo se concede el acceso Pro
+
+```
+Usuario paga en Stripe
+        │
+        ├─► vuelve a /success ──► esta página NO da acceso; espera y muestra
+        │                          lo que haya confirmado el webhook
+        │
+        └─► Stripe llama al webhook ──► se valida la firma
+                                   └─► se comprueba que el evento es nuevo
+                                   └─► se relee la suscripción en Stripe
+                                   └─► se escribe en `subscriptions`
+                                            │
+                                            └─► ahora sí: el usuario es Pro
+```
+
+Reglas:
+
+- La firma se valida **siempre**, con el cuerpo crudo. Sin firma válida: 400 y
+  no se toca nada.
+- Cada evento se procesa una vez (`stripe_events`). Stripe reenvía si no
+  recibe un 200, y repetir un evento no debe cambiar el resultado.
+- Los eventos que no manejamos devuelven 200 para que Stripe deje de
+  mandarlos; un error nuestro devuelve 500 para que reintente.
+- El estado se relee de Stripe en lugar de fiarse del contenido del evento.
+
+### Qué pasa al cancelar
+
+Mantienes Pro **hasta el final del periodo que ya has pagado**. Después vuelves
+a Free y tus datos se conservan. Si un pago falla, hay margen hasta el fin del
+ciclo: una tarjeta caducada no debería dejarte sin plan de estudio a mitad de
+semana. La lógica está en `src/services/billing/access.ts`, es una función
+pura y tiene 23 pruebas.
 
 ## 8. IA
 
@@ -294,7 +342,16 @@ Vitest con jsdom y Testing Library.
 npm run test          # una pasada
 npm run test:watch    # modo vigilancia
 npm run verify:rls    # comprueba RLS contra un PostgreSQL real (ver abajo)
+npm run verify:bundle # comprueba que ningún secreto llega al navegador
 ```
+
+### Comprobación del bundle
+
+`npm run verify:bundle` (después de `npm run build`) revisa el JavaScript que
+se envía al navegador y falla si encuentra una clave secreta o siquiera el
+nombre de una variable de servidor. Next.js sólo inlinea las `NEXT_PUBLIC_*`,
+pero un import mal puesto puede arrastrar al cliente un módulo de servidor;
+esto lo detecta.
 
 ### Comprobación de RLS contra PostgreSQL real
 
@@ -342,7 +399,7 @@ Qué se cubre hoy:
 - **Componentes** (`tests/components/`) — la tabla de precios muestra lo que
   dice la configuración; el editor de temas añade, edita, reordena y elimina.
 
-Pendiente para fases siguientes: webhook de Stripe.
+Ya no queda ninguna pieza crítica sin probar.
 
 ## 11. Deployment
 
@@ -395,7 +452,7 @@ o a `localhost` si no está definida.
 | 2 | Exámenes, asignaturas, temas, tareas, panel real, progreso básico | ✅ Completada |
 | 3 | `AIProvider`, generación de planes con IA, límites y consumo | ✅ Completada |
 | 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | ✅ Completada |
-| 5 | Stripe, suscripciones, webhook, portal, Free/Pro, paywalls | ⏳ |
+| 5 | Stripe, suscripciones, webhook, portal, Free/Pro, paywalls | ✅ Completada |
 | 6 | Responsive fino, SEO, PWA, analítica, feedback, seguridad | ⏳ |
 | 7 | Testing completo, revisión y despliegue | ⏳ |
 
@@ -438,7 +495,10 @@ Estado actual de la fase 1:
 - [x] Prompts endurecidos contra inyección, con saneado de la respuesta
 - [x] La IA nunca recibe claves ni identificadores de usuario
 - [x] `ai_generations` no guarda prompts ni respuestas, sólo metadatos
-- [ ] Webhook de Stripe validado por firma — *fase 5*
+- [x] Webhook de Stripe validado por firma, con el cuerpo crudo
+- [x] `subscriptions` sin políticas de escritura: nadie se regala Pro
+- [x] Eventos de Stripe procesados una sola vez
+- [x] Borrar la cuenta cancela la suscripción antes de borrar nada
 - [ ] Rate limiting distribuido (hoy es por instancia) — antes de escalar
 
 ## Aviso legal

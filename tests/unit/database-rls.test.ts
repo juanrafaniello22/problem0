@@ -43,9 +43,11 @@ describe('migraciones de Supabase', () => {
         'profiles',
         'study_plan_versions',
         'study_plans',
+        'stripe_events',
         'study_sessions',
         'study_tasks',
         'subjects',
+        'subscriptions',
         'topics',
         'user_settings',
       ].sort(),
@@ -93,6 +95,19 @@ describe('migraciones de Supabase', () => {
     expect(policy).toContain('from public.habits');
   });
 
+  it('nadie puede escribir su propia suscripción', () => {
+    // Si el usuario pudiera insertar o actualizar aquí, se regalaría Pro.
+    // Sólo el webhook de Stripe, con la clave de servicio, escribe esta tabla.
+    expect(sql).not.toMatch(/create policy "subscriptions_(insert|update|delete)/);
+    expect(sql).toMatch(/create policy "subscriptions_select_own"/);
+  });
+
+  it('la tabla de eventos de Stripe no es accesible para los usuarios', () => {
+    // Con RLS activo y sin ninguna política, nadie autenticado la ve.
+    expect(sql).toContain('alter table public.stripe_events enable row level security');
+    expect(sql).not.toMatch(/create policy "stripe_events/);
+  });
+
   it('el consumo de IA no guarda prompts ni respuestas', () => {
     const table = sql.match(/create table if not exists public\.ai_generations[\s\S]*?\n\);/)?.[0];
     expect(table).toBeTruthy();
@@ -129,7 +144,12 @@ describe('migraciones de Supabase', () => {
   });
 
   it('cada tabla tiene al menos una política de lectura ligada a auth.uid()', () => {
+    // stripe_events es la excepción a propósito: sin políticas, sólo la clave
+    // de servicio la toca. Se comprueba aparte.
+    const usuariosNoLaVen = new Set(['stripe_events']);
+
     for (const table of tableNames()) {
+      if (usuariosNoLaVen.has(table)) continue;
       const policyBlocks = [
         ...sql.matchAll(new RegExp(`create policy "[^"]+" on public\\.${table}[\\s\\S]*?;`, 'g')),
       ].map((match) => match[0]);
@@ -169,8 +189,12 @@ describe('migraciones de Supabase', () => {
   });
 
   it('las tablas con datos de usuario referencian profiles o auth.users', () => {
+    // `profiles` es la raíz, y `stripe_events` no guarda datos de nadie: sólo
+    // qué eventos de Stripe ya se procesaron, para no repetirlos.
+    const sinDuenyo = new Set(['profiles', 'stripe_events']);
+
     for (const table of tableNames()) {
-      if (table === 'profiles') continue;
+      if (sinDuenyo.has(table)) continue;
       const tableBlock = sql.match(
         new RegExp(`create table if not exists public\\.${table}[\\s\\S]*?\\n\\);`),
       )?.[0];

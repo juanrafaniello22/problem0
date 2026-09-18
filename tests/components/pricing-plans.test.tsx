@@ -41,12 +41,23 @@ describe('<PricingPlans />', () => {
     expect(screen.getByText('para siempre')).toBeInTheDocument();
   });
 
-  it('los botones llevan al registro', () => {
+  it('cada plan lleva a donde toca', () => {
     render(<PricingPlans />);
-    const links = screen.getAllByRole('link');
-    expect(links.length).toBeGreaterThanOrEqual(2);
-    for (const link of links) {
-      expect(link).toHaveAttribute('href', '/signup');
-    }
+    // El gratuito, a crear cuenta. El de pago, a la mejora dentro de la app,
+    // que es donde se abre el checkout de Stripe.
+    expect(screen.getByRole('link', { name: /Empezar gratis/ })).toHaveAttribute(
+      'href',
+      '/signup',
+    );
+    expect(screen.getByRole('link', { name: /Desbloquear Pro/ })).toHaveAttribute(
+      'href',
+      '/upgrade',
+    );
+  });
+
+  it('acepta destinos personalizados', () => {
+    render(<PricingPlans freeHref="/a" proHref="/b" />);
+    expect(screen.getByRole('link', { name: /Empezar gratis/ })).toHaveAttribute('href', '/a');
+    expect(screen.getByRole('link', { name: /Desbloquear Pro/ })).toHaveAttribute('href', '/b');
   });
 });

@@ -59,7 +59,7 @@ export function PaywallDialog({
             Ahora no
           </Button>
           <Button asChild onClick={onUpgradeClick}>
-            <Link href={routes.pricing}>Desbloquear Pro</Link>
+            <Link href={routes.upgrade}>Desbloquear Pro</Link>
           </Button>
         </DialogFooter>
       </DialogContent>

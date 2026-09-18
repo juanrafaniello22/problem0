@@ -90,7 +90,8 @@ services/
 ├── habits/     streak.ts (puro) · habit.service.ts · habit.actions.ts
 ├── sessions/   session.service.ts · session.actions.ts
 ├── progress/   progress.ts (puro) · progress.service.ts
-├── billing/    entitlements.ts · subscription.service.ts
+├── billing/    access.ts (puro) · entitlements.ts · subscription.service.ts
+│              stripe.service.ts · billing.actions.ts
 └── analytics/  events.ts (catálogo cerrado) · track.ts
 ```
 
@@ -127,7 +128,15 @@ Supabase), rate limiting por IP en autenticación, protección contra open
 redirects en `safeNextPath()`, logs con redacción de campos sensibles y
 mensajes de error genéricos que no revelan si un email existe.
 
-Dos redes de seguridad sobre RLS:
+Tres redes de seguridad automatizadas:
+
+0. `npm run verify:bundle` revisa el JavaScript compilado y falla si encuentra
+   un secreto o el nombre de una variable de servidor. Ya ha pillado un caso
+   real: `config/env.ts` mezclaba el esquema público y el de servidor, así que
+   el segundo acababa en el bundle de cliente (sólo los nombres, nunca los
+   valores). Ahora están separados, y `env.server.ts` lleva `server-only`.
+
+Y dos sobre RLS:
 
 1. `tests/unit/database-rls.test.ts` lee las migraciones y falla si alguien
    añade una tabla sin RLS, una política `to public`, un `using (true)` o un
@@ -247,6 +256,51 @@ de plan de IA.
   con otro modelo dentro de la misma llamada. Usa API en beta, así que se
   puede apagar sin perder nada — el respaldo local sigue ahí.
 
+## 9e. Cobro
+
+La regla que lo gobierna todo: **la fuente de verdad del acceso Pro es Stripe,
+y llega por webhook**. Ninguna otra vía concede acceso.
+
+```
+Usuario paga
+    │
+    ├─► vuelve a /success ──► lee el estado. No lo escribe.
+    │
+    └─► webhook ──► firma válida? ──no──► 400, no se toca nada
+                         │sí
+                    ¿evento nuevo? ──no──► 200, ya estaba aplicado
+                         │sí
+                    se relee la suscripción en Stripe
+                         │
+                    se escribe en `subscriptions` (clave de servicio)
+```
+
+La propiedad de seguridad está en el esquema, no en el código: la tabla
+`subscriptions` tiene política de `select` pero **ninguna de `insert`,
+`update` ni `delete`**. Aunque alguien encontrase un fallo en la aplicación, no
+podría ascenderse a Pro: Postgres no se lo permite. `npm run verify:rls` lo
+comprueba contra una base real.
+
+`stripe_events` no tiene ninguna política: es exclusivamente del webhook.
+
+**Quién tiene Pro** (`services/billing/access.ts`, función pura, 23 pruebas):
+
+- Activa o en prueba: Pro.
+- Cancelada: Pro hasta el final del periodo pagado. Cancelar no es que te
+  quiten el mes que has pagado.
+- Pago fallido: margen hasta el fin del ciclo. Una tarjeta caducada no debería
+  dejarte sin plan de estudio a mitad de semana.
+- Cualquier otra cosa, o un dato ambiguo: Free. Nunca se regala Pro por una
+  fecha corrupta o un estado desconocido.
+
+**Idempotencia.** Stripe reenvía los eventos que no reciben un 200. Cada evento
+se registra en `stripe_events` antes de aplicarlo, y toda la sincronización es
+un `upsert`: aplicar dos veces el mismo estado no cambia nada.
+
+**Borrar la cuenta cancela primero la suscripción.** Si se borrase el usuario
+antes, se perdería su identificador de Stripe y se le seguiría cobrando a
+alguien que ya no existe.
+
 ## 9d. Hábitos y tiempo real
 
 **Rachas** (`services/habits/streak.ts`, función pura con 25 pruebas). Dos
@@ -329,7 +383,7 @@ alimentada por el webhook de Stripe.
 | 2 | Exámenes, temas, planes, tareas, panel real, progreso | **Completada** |
 | 3 | `AIProvider`, generación con IA, límites, `ai_generations` | **Completada** |
 | 4 | Hábitos, Pomodoro, sesiones de estudio, estadísticas | **Completada** |
-| 5 | Stripe, suscripciones, webhook, portal, paywalls | Pendiente |
+| 5 | Stripe, suscripciones, webhook, portal, paywalls | **Completada** |
 | 6 | Responsive fino, SEO, PWA, analítica, feedback, seguridad | Pendiente |
 | 7 | Testing completo, revisión y despliegue | Pendiente |
 
@@ -349,6 +403,13 @@ alimentada por el webhook de Stripe.
   arquitectura. Además queda como respaldo cuando la IA falle o se agote la
   cuota, que es justo lo que pide el requisito de no dejar al usuario sin
   plan por un error del modelo.
+- **La landing sigue siendo estática aunque haya cobro.** El botón de Pro en
+  `/pricing` lleva a `/upgrade`, una ruta protegida dentro de la app donde sí
+  se abre el checkout. Así la página pública no se vuelve dinámica sólo para
+  saber si hay sesión.
+- **Agotar la cuota no bloquea, pero acabar el periodo pagado sí baja a Free.**
+  Son cosas distintas: una es un límite de uso dentro de un plan que sigue
+  siendo gratuito; la otra es que se acabó lo que se pagó.
 - **Los hábitos se archivan, no se borran, por defecto.** Borrar un hábito se
   lleva por delante su racha y su histórico; archivarlo lo quita de en medio
   sin perder nada. El menú ofrece las dos cosas y el borrado pide confirmación.

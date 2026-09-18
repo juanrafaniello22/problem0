@@ -24,6 +24,7 @@ export const routes = {
   focus: '/focus',
   progress: '/progress',
   settings: '/settings',
+  upgrade: '/upgrade',
   success: '/success',
   admin: '/admin',
 } as const;
@@ -37,6 +38,7 @@ export const protectedPrefixes = [
   routes.progress,
   routes.settings,
   routes.onboarding,
+  routes.upgrade,
   routes.success,
   routes.admin,
 ] as const;

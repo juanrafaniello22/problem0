@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { aiConfig } from '@/config/ai';
-import { serverEnv } from '@/config/env';
+import { serverEnv } from '@/config/env.server';
 import { logger } from '@/lib/logger';
 import type { AIEffort, AIProvider, AIProviderId } from './provider';
 import { createAnthropicProvider } from './providers/anthropic.provider';

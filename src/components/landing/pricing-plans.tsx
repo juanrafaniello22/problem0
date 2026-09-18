@@ -19,7 +19,13 @@ import { cn } from '@/lib/utils';
  * Tabla de precios. Todos los importes salen de `config/pricing.ts`:
  * cambiar un precio no debe requerir tocar la interfaz.
  */
-export function PricingPlans({ ctaHref = routes.signup }: { ctaHref?: string }) {
+export function PricingPlans({
+  freeHref = routes.signup,
+  proHref = routes.upgrade,
+}: {
+  freeHref?: string;
+  proHref?: string;
+}) {
   const [interval, setInterval] = useState<BillingInterval>('month');
   const saving = yearlySavingPercent();
 
@@ -124,7 +130,7 @@ export function PricingPlans({ ctaHref = routes.signup }: { ctaHref?: string }) 
                 variant={plan.highlighted ? 'default' : 'outline'}
                 className="mt-7 w-full"
               >
-                <Link href={ctaHref}>{plan.cta}</Link>
+                <Link href={isFree ? freeHref : proHref}>{plan.cta}</Link>
               </Button>
             </div>
           );

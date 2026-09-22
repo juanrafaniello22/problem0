@@ -286,3 +286,70 @@ describe('endurecimiento de funciones', () => {
     }
   });
 });
+
+describe('índices en claves foráneas', () => {
+  const sql = readMigrations();
+
+  /** Cuerpo de cada `create table`, para no mirar nunca fuera de su tabla. */
+  const cuerpos = new Map<string, string>();
+  for (const bloque of sql.matchAll(
+    /create table if not exists public\.(\w+) \(([\s\S]*?)\n\);/g,
+  )) {
+    cuerpos.set(bloque[1] ?? '', bloque[2] ?? '');
+  }
+
+  /** Cada clave foránea encontrada, con la tabla a la que pertenece. */
+  function clavesForaneas(): { tabla: string; columna: string }[] {
+    const encontradas: { tabla: string; columna: string }[] = [];
+
+    // 1. Las declaradas dentro del CREATE TABLE.
+    for (const [tabla, cuerpo] of cuerpos) {
+      for (const fk of cuerpo.matchAll(/(\w+) uuid[^,\n]*references public\./g)) {
+        encontradas.push({ tabla, columna: fk[1] ?? '' });
+      }
+    }
+
+    // 2. Las añadidas después con ALTER TABLE (la circular de study_plans).
+    for (const alter of sql.matchAll(
+      /alter table public\.(\w+)[\s\S]{0,200}?foreign key \((\w+)\)/g,
+    )) {
+      encontradas.push({ tabla: alter[1] ?? '', columna: alter[2] ?? '' });
+    }
+
+    return encontradas;
+  }
+
+  it('toda clave foránea tiene un índice que la cubra', () => {
+    // PostgreSQL no indexa el lado hijo de una clave foránea. Sin índice, cada
+    // borrado del padre recorre la tabla hija entera, y borrar es algo que la
+    // app hace de verdad: al replanificar, al borrar un examen y al borrar la
+    // cuenta. El analizador de Supabase encontró cuatro que faltaban.
+    //
+    // La comprobación es POR TABLA a propósito: un índice sobre `user_id` en
+    // `topics` no cubre el `user_id` de `feedback`.
+    const claves = clavesForaneas();
+    expect(claves.length).toBeGreaterThan(10);
+
+    const sinIndice = claves.filter(({ tabla, columna }) => {
+      // Vale cualquier índice de ESA tabla que empiece por la columna: en un
+      // índice compuesto, el primer campo ya sirve para buscar.
+      const indice = new RegExp(
+        `create (unique )?index[^;]*on public\\.${tabla} \\(\\s*${columna}\\b`,
+      ).test(sql);
+
+      // O que la columna sea la propia clave primaria de la tabla. Se mira
+      // SÓLO dentro del cuerpo de esa tabla: buscarlo en todo el fichero daba
+      // por cubierta una columna gracias a la clave primaria de otra tabla.
+      const esClavePrimaria = new RegExp(`${columna} uuid primary key`).test(
+        cuerpos.get(tabla) ?? '',
+      );
+
+      return !indice && !esClavePrimaria;
+    });
+
+    expect(
+      sinIndice,
+      `sin índice: ${sinIndice.map((c) => `${c.tabla}.${c.columna}`).join(', ')}`,
+    ).toEqual([]);
+  });
+});

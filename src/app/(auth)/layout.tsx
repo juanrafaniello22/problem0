@@ -27,12 +27,13 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="w-full max-w-[26rem] animate-fade-up">{children}</div>
       </main>
 
-      <footer className="px-4 pb-6 text-center text-xs text-muted-foreground sm:px-6">
-        <Link href={routes.privacy} className="hover:text-foreground">
+      <footer className="flex items-center justify-center px-4 pb-6 text-xs text-muted-foreground sm:px-6">
+        {/* Con `px-2 py-1` los dos enlaces llegan al objetivo táctil mínimo. */}
+        <Link href={routes.privacy} className="inline-block px-2 py-1 hover:text-foreground">
           Privacidad
         </Link>
-        <span className="mx-2">·</span>
-        <Link href={routes.terms} className="hover:text-foreground">
+        <span aria-hidden>·</span>
+        <Link href={routes.terms} className="inline-block px-2 py-1 hover:text-foreground">
           Términos
         </Link>
       </footer>

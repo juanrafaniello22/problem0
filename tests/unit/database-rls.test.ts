@@ -226,3 +226,28 @@ describe('migraciones de Supabase', () => {
     expect(sql).toMatch(/marketing_opt_in boolean not null default false/);
   });
 });
+
+describe('setup.sql', () => {
+  const setup = readFileSync(join(process.cwd(), 'supabase', 'setup.sql'), 'utf8');
+
+  it('contiene todas las migraciones, en orden', () => {
+    // Es el archivo que se pega en Supabase para instalar de una vez. Si se
+    // queda atrás respecto a las migraciones, alguien monta media base de
+    // datos y no se entera hasta que algo falla en producción.
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((file) => file.endsWith('.sql'))
+      .sort();
+
+    let cursor = 0;
+    for (const file of files) {
+      const body = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
+      const position = setup.indexOf(body, cursor);
+      expect(position, `${file} falta o está desordenado en setup.sql`).toBeGreaterThan(-1);
+      cursor = position + body.length;
+    }
+  });
+
+  it('avisa de que se genera solo', () => {
+    expect(setup).toContain('GENERADO AUTOMÁTICAMENTE');
+  });
+});

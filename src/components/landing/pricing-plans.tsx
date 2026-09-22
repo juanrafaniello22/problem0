@@ -22,9 +22,16 @@ import { cn } from '@/lib/utils';
 export function PricingPlans({
   freeHref = routes.signup,
   proHref = routes.upgrade,
+  titleAs: Title = 'h3',
 }: {
   freeHref?: string;
   proHref?: string;
+  /**
+   * En la landing los planes van bajo un `h2` de sección, así que son `h3`.
+   * En /pricing el encabezado de la página ya es `h1` y deben subir a `h2`
+   * para no saltarse un nivel.
+   */
+  titleAs?: 'h2' | 'h3';
 }) {
   const [interval, setInterval] = useState<BillingInterval>('month');
   const saving = yearlySavingPercent();
@@ -82,7 +89,7 @@ export function PricingPlans({
                 </span>
               )}
 
-              <h3 className="font-display text-lg font-bold">{plan.name}</h3>
+              <Title className="font-display text-lg font-bold">{plan.name}</Title>
               <p className="mt-1.5 text-sm text-muted-foreground">{plan.summary}</p>
 
               <div className="mt-6 flex items-baseline gap-1.5">

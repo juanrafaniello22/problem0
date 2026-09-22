@@ -18,9 +18,17 @@ function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return <div data-slot="card-header" className={cn('flex flex-col gap-1.5 p-5 sm:p-6', className)} {...props} />;
 }
 
-function CardTitle({ className, ...props }: React.ComponentProps<'h3'>) {
+/**
+ * `as` permite subir el nivel del encabezado sin cambiar el aspecto.
+ * Una página necesita un h1, y a veces ese h1 es el título de una tarjeta.
+ */
+function CardTitle({
+  as: Tag = 'h3',
+  className,
+  ...props
+}: React.ComponentProps<'h3'> & { as?: 'h1' | 'h2' | 'h3' | 'h4' }) {
   return (
-    <h3 data-slot="card-title" className={cn('text-base font-semibold leading-tight', className)} {...props} />
+    <Tag data-slot="card-title" className={cn('text-base font-semibold leading-tight', className)} {...props} />
   );
 }
 

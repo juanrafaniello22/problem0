@@ -72,6 +72,9 @@ insert into public.study_sessions
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '11111111-1111-4111-8111-111111111111',
    25, 1500, '2099-01-01T10:00:00Z', '2099-01-01T10:25:00Z');
 
+insert into public.feedback (user_id, type, message) values
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'sugerencia', 'Me gustaría exportar el plan a PDF.');
+
 -- A partir de aquí actuamos como Ana, con el rol de un usuario autenticado.
 set local role authenticated;
 set local request.jwt.claim.sub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -97,6 +100,8 @@ begin
     (select count(*) from public.subscriptions) = 0);
   perform pg_temp.ok('no ve los eventos de Stripe',
     (select count(*) from public.stripe_events) = 0);
+  perform pg_temp.ok('no ve el feedback de otro',
+    (select count(*) from public.feedback) = 0);
 end $$;
 
 do $$
@@ -125,6 +130,16 @@ begin
   update public.analytics_events set name = 'falseado';
   get diagnostics affected = row_count;
   perform pg_temp.ok('no puede falsear los eventos de analítica', affected = 0);
+
+  -- El feedback es un buzón: se deja algo dentro y ya no se toca, ni el propio
+  -- ni el de nadie. Sin políticas de update ni delete, nadie reescribe nada.
+  update public.feedback set message = 'reescrito';
+  get diagnostics affected = row_count;
+  perform pg_temp.ok('no puede reescribir el feedback', affected = 0);
+
+  delete from public.feedback;
+  get diagnostics affected = row_count;
+  perform pg_temp.ok('no puede borrar el feedback', affected = 0);
 
   update public.habits set name = 'HACKEADO'
     where id = '66666666-6666-4666-8666-666666666666';
@@ -182,6 +197,22 @@ begin
     raise exception 'FALLO: pudo marcar el hábito de otro usuario';
   exception when insufficient_privilege then
     raise notice '  OK    no puede marcar el hábito de otro';
+  end;
+
+  begin
+    insert into public.feedback (user_id, type, message)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'problema', 'El cronómetro se para al bloquear.');
+    raise notice '  OK    sí puede enviar su propio feedback';
+  exception when insufficient_privilege then
+    raise exception 'FALLO: no pudo enviar su propio feedback';
+  end;
+
+  begin
+    insert into public.feedback (user_id, type, message)
+    values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'valoracion', 'Firmado por otro.');
+    raise exception 'FALLO: pudo enviar feedback en nombre de otro';
+  exception when insufficient_privilege then
+    raise notice '  OK    no puede enviar feedback en nombre de otro';
   end;
 end $$;
 

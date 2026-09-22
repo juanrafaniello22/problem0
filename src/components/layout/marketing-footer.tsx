@@ -45,12 +45,14 @@ export function MarketingFooter() {
           {columns.map((column) => (
             <div key={column.title}>
               <h3 className="text-sm font-semibold">{column.title}</h3>
-              <ul className="mt-4 flex flex-col gap-2.5">
+              {/* `py-1` deja cada enlace por encima de los 24px de alto que
+                  pide la WCAG 2.2 para un objetivo táctil. */}
+              <ul className="mt-3 flex flex-col gap-1">
                 {column.links.map((link) => (
                   <li key={link.href + link.label}>
                     <Link
                       href={link.href}
-                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                      className="inline-block py-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
                     >
                       {link.label}
                     </Link>
@@ -67,7 +69,7 @@ export function MarketingFooter() {
           </p>
           <a
             href={siteConfig.links.support}
-            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-block py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             Soporte
           </a>

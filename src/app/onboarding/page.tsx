@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import { OnboardingStarted } from '@/components/onboarding/onboarding-started';
 import { OnboardingWizard } from '@/components/onboarding/onboarding-wizard';
 import { routes } from '@/config/routes';
 import { requireSessionUser } from '@/services/auth/session';
@@ -19,5 +20,10 @@ export default async function OnboardingPage() {
   const defaultName =
     profile?.full_name ?? (typeof metadataName === 'string' ? metadataName : '') ?? '';
 
-  return <OnboardingWizard defaultName={defaultName} />;
+  return (
+    <>
+      <OnboardingStarted />
+      <OnboardingWizard defaultName={defaultName} />
+    </>
+  );
 }

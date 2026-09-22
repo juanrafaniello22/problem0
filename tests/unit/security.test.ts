@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { isAuthPath, isProtectedPath, routes } from '@/config/routes';
 import { checkRateLimit, resetRateLimits } from '@/lib/rate-limit';
@@ -88,5 +89,57 @@ describe('checkRateLimit', () => {
     expect(checkRateLimit('ip:3', options).allowed).toBe(true);
     expect(checkRateLimit('ip:3', options).allowed).toBe(false);
     expect(checkRateLimit('ip:4', options).allowed).toBe(true);
+  });
+});
+
+describe('cabeceras de seguridad', () => {
+  const config = readFileSync('next.config.ts', 'utf8');
+
+  /** Sólo las directivas, sin los comentarios que las explican. */
+  const policy = config
+    .slice(config.indexOf('const contentSecurityPolicy = ['), config.indexOf('].join'))
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('//'))
+    .join('\n');
+
+  it('declara las cabeceras imprescindibles', () => {
+    for (const header of [
+      'X-Content-Type-Options',
+      'Referrer-Policy',
+      'X-Frame-Options',
+      'Permissions-Policy',
+      'Strict-Transport-Security',
+      'Content-Security-Policy',
+    ]) {
+      expect(config, header).toContain(header);
+    }
+  });
+
+  it('la política de contenido cierra iframe, base y formularios', () => {
+    for (const directive of [
+      "frame-ancestors 'self'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ]) {
+      expect(policy, directive).toContain(directive);
+    }
+  });
+
+  it('no usa unsafe-inline ni unsafe-eval', () => {
+    // Una política con `unsafe-inline` aparenta proteger sin hacerlo. Si
+    // alguna vez hace falta `script-src`, será con nonce.
+    expect(policy).not.toContain('unsafe-inline');
+    expect(policy).not.toContain('unsafe-eval');
+  });
+
+  it('no declara default-src, que dejaría la app sin hidratar', () => {
+    // `default-src` sería el respaldo de `script-src`: bloquearía los scripts
+    // en línea de Next y la aplicación no arrancaría.
+    expect(policy).not.toContain('default-src');
+  });
+
+  it('oculta la tecnología del servidor', () => {
+    expect(config).toContain('poweredByHeader: false');
   });
 });

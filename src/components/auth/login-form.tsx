@@ -62,7 +62,7 @@ export function LoginForm() {
 
       <Link
         href={routes.forgotPassword}
-        className="-mt-1 self-end text-xs font-medium text-muted-foreground hover:text-foreground"
+        className="-mt-2 self-end py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
       >
         He olvidado mi contraseña
       </Link>

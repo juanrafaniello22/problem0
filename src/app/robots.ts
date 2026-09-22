@@ -7,7 +7,19 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: '*',
       allow: '/',
       // Las zonas privadas no aportan nada en buscadores.
-      disallow: ['/dashboard', '/plan', '/habits', '/focus', '/progress', '/settings', '/onboarding', '/admin', '/api/', '/success'],
+      disallow: [
+        '/dashboard',
+        '/plan',
+        '/habits',
+        '/focus',
+        '/progress',
+        '/settings',
+        '/onboarding',
+        '/upgrade',
+        '/success',
+        '/admin',
+        '/api/',
+      ],
     },
     sitemap: absoluteUrl('/sitemap.xml'),
   };

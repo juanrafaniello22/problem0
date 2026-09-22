@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { routes } from '@/config/routes';
 import { actionError, actionOk, toUserMessage, type ActionResult } from '@/lib/errors';
 import { createClient } from '@/lib/supabase/server';
-import { track } from '@/services/analytics/track';
+import { track, trackOnce } from '@/services/analytics/track';
 import { completeOnboarding, skipOnboarding } from '@/services/profile/profile.service';
 import { onboardingSchema, normalizeSubjects } from '@/validation/onboarding';
 
@@ -15,6 +15,23 @@ import { onboardingSchema, normalizeSubjects } from '@/validation/onboarding';
 
 export interface OnboardingSuccess {
   nextPath: string;
+}
+
+/**
+ * Marca que el usuario ha llegado al onboarding.
+ *
+ * Se registra una sola vez por usuario: recargar la página no debe inflar la
+ * métrica, porque entonces el embudo de conversión dejaría de significar nada.
+ */
+export async function trackOnboardingStartedAction(): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  await trackOnce('onboarding_started', user.id);
 }
 
 export async function completeOnboardingAction(

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { AiUsageCard } from '@/components/settings/ai-usage-card';
 import { DangerZone } from '@/components/settings/danger-zone';
+import { FeedbackCard } from '@/components/settings/feedback-card';
 import { SubscriptionCard } from '@/components/settings/subscription-card';
 import { ProfileForm } from '@/components/settings/profile-form';
 import { SignOutButton } from '@/components/settings/sign-out-button';
@@ -76,6 +77,8 @@ export default async function SettingsPage() {
           <ThemeSelector />
         </CardContent>
       </Card>
+
+      <FeedbackCard />
 
       <DangerZone email={user.email ?? ''} isPro={subscription.plan === 'pro'} />
     </div>

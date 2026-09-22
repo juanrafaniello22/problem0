@@ -8,6 +8,7 @@ import { AppError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { getStripe, stripePriceId } from '@/lib/stripe';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { trackServer } from '@/services/analytics/track';
 import type { SubscriptionRow, SubscriptionStatus } from '@/types/database';
 
 /**
@@ -160,6 +161,11 @@ export async function syncSubscription(subscription: Stripe.Subscription): Promi
 
   const item = subscription.items.data[0];
   const periodEnd = item?.current_period_end ?? null;
+  const status = mapStripeStatus(subscription.status);
+
+  // El estado anterior se lee antes de escribir: es lo único que permite
+  // distinguir un alta nueva de la enésima actualización del mismo evento.
+  const previous = await getSubscription(userId);
 
   const supabase = createAdminClient();
   const { error } = await supabase.from('subscriptions').upsert(
@@ -167,7 +173,7 @@ export async function syncSubscription(subscription: Stripe.Subscription): Promi
       user_id: userId,
       stripe_customer_id: customerId,
       stripe_subscription_id: subscription.id,
-      status: mapStripeStatus(subscription.status),
+      status,
       price_id: item?.price.id ?? null,
       current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
       cancel_at_period_end: subscription.cancel_at_period_end,
@@ -184,6 +190,55 @@ export async function syncSubscription(subscription: Stripe.Subscription): Promi
     status: subscription.status,
     cancel_at_period_end: subscription.cancel_at_period_end,
   });
+
+  await trackSubscriptionChange({
+    userId,
+    previous,
+    status,
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    interval: item?.price.recurring?.interval ?? null,
+  });
+}
+
+/** Estados que dan acceso Pro sin condiciones. */
+const ACTIVE_STATUSES: SubscriptionStatus[] = ['active', 'trialing'];
+
+/**
+ * Traduce la sincronización a eventos de producto.
+ *
+ * Los webhooks llegan repetidos y desordenados, así que sólo se registra el
+ * cambio real: pasar a tener acceso, o dejar de tenerlo. Nada de datos
+ * personales, sólo estado y periodicidad.
+ */
+async function trackSubscriptionChange(params: {
+  userId: string;
+  previous: SubscriptionRow | null;
+  status: SubscriptionStatus;
+  cancelAtPeriodEnd: boolean;
+  interval: string | null;
+}): Promise<void> {
+  const wasActive = params.previous ? ACTIVE_STATUSES.includes(params.previous.status) : false;
+  const isActive = ACTIVE_STATUSES.includes(params.status);
+
+  if (!wasActive && isActive) {
+    await trackServer('subscription_created', params.userId, {
+      status: params.status,
+      interval: params.interval,
+    });
+    return;
+  }
+
+  // Cancelar en Stripe no corta el acceso al momento: la suscripción sigue
+  // activa hasta el fin del periodo pagado. Ese aviso también es una baja.
+  const justScheduledCancel =
+    isActive && params.cancelAtPeriodEnd && params.previous?.cancel_at_period_end !== true;
+
+  if ((wasActive && !isActive) || justScheduledCancel) {
+    await trackServer('subscription_cancelled', params.userId, {
+      status: params.status,
+      at_period_end: params.cancelAtPeriodEnd,
+    });
+  }
 }
 
 /** Encuentra al usuario: primero por metadatos, luego por cliente de Stripe. */

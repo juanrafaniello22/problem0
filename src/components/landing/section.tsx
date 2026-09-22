@@ -22,11 +22,14 @@ export function SectionHeading({
   title,
   description,
   align = 'center',
+  as: Tag = 'h2',
 }: {
   eyebrow?: string;
   title: string;
   description?: string;
   align?: 'center' | 'left';
+  /** `h1` cuando esta sección es el encabezado principal de la página. */
+  as?: 'h1' | 'h2';
 }) {
   return (
     <div className={cn('flex flex-col gap-3', align === 'center' && 'items-center text-center')}>
@@ -35,7 +38,7 @@ export function SectionHeading({
           {eyebrow}
         </span>
       )}
-      <h2 className="max-w-2xl text-3xl font-bold sm:text-4xl">{title}</h2>
+      <Tag className="max-w-2xl text-3xl font-bold sm:text-4xl">{title}</Tag>
       {description && (
         <p className="max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
           {description}

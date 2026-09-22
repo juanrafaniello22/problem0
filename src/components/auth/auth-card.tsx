@@ -15,7 +15,10 @@ export function AuthCard({
   return (
     <Card className="shadow-lg shadow-black/[0.04]">
       <CardHeader className="pb-4 text-center">
-        <CardTitle className="font-display text-2xl">{title}</CardTitle>
+        {/* Es el encabezado principal de la página: debe ser h1. */}
+        <CardTitle as="h1" className="font-display text-2xl">
+          {title}
+        </CardTitle>
         {description && <CardDescription className="text-sm">{description}</CardDescription>}
       </CardHeader>
       <CardContent className="pb-6">

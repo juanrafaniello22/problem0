@@ -10,7 +10,9 @@ function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxP
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        'peer size-5 shrink-0 rounded-[6px] border border-input bg-surface shadow-xs outline-none transition-[background-color,border-color,box-shadow]',
+        'peer relative size-5 shrink-0 rounded-[6px] border border-input bg-surface shadow-xs outline-none transition-[background-color,border-color,box-shadow]',
+        // Se ve de 20px, pero se pulsa en 32px: en un móvil 20px se falla.
+        "before:absolute before:-inset-1.5 before:content-['']",
         'focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30',
         'data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground',
         'aria-invalid:border-destructive disabled:cursor-not-allowed disabled:opacity-60',

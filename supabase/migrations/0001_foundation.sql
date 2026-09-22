@@ -30,6 +30,9 @@ exception when duplicate_object then null; end $$;
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
+-- Vacío y no `public`: sólo usa now(), que vive en pg_catalog y siempre se
+-- resuelve. Sin search_path fijo, quien llama podría colar una función suya.
+set search_path = ''
 as $$
 begin
   new.updated_at = now();

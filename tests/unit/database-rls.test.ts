@@ -251,3 +251,38 @@ describe('setup.sql', () => {
     expect(setup).toContain('GENERADO AUTOMÁTICAMENTE');
   });
 });
+
+describe('endurecimiento de funciones', () => {
+  const sql = readMigrations();
+
+  /** Bloques `create ... function` completos, tal y como aparecen. */
+  function functionBlocks(): { name: string; body: string }[] {
+    return [...sql.matchAll(/create or replace function public\.(\w+)[\s\S]*?\$\$;/g)].map(
+      (match) => ({ name: match[1] ?? '', body: match[0] }),
+    );
+  }
+
+  it('todas las funciones fijan su search_path', () => {
+    // No sólo las SECURITY DEFINER: cualquier función sin search_path fijo
+    // resuelve los nombres con el del que la llama, y ese es el agujero.
+    const blocks = functionBlocks();
+    expect(blocks.length).toBeGreaterThan(0);
+
+    for (const { name, body } of blocks) {
+      expect(body, `public.${name} no fija search_path`).toContain('set search_path');
+    }
+  });
+
+  it('nadie puede invocar las funciones de trigger desde la API', () => {
+    // PostgREST publica como endpoint HTTP toda función del esquema public.
+    // Sin este revoke, /rest/v1/rpc/handle_new_user queda abierto a cualquiera.
+    for (const name of ['set_updated_at', 'handle_new_user', 'handle_user_email_change']) {
+      expect(sql, `falta revocar execute sobre public.${name}`).toMatch(
+        new RegExp(`revoke execute on function public\\.${name}\\(\\)[^;]*from[^;]*anon`),
+      );
+      expect(sql).toMatch(
+        new RegExp(`revoke execute on function public\\.${name}\\(\\)[^;]*authenticated`),
+      );
+    }
+  });
+});

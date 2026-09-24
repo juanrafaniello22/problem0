@@ -13,6 +13,18 @@ export interface TaskWithExam extends StudyTaskRow {
 }
 
 /**
+ * El examen de cada tarea, nombrando la clave ajena de forma explícita.
+ *
+ * Sin el `!clave`, Supabase adivina la relación. Entre tareas y exámenes hay
+ * una directa (`exam_id`) y un camino indirecto por `study_sessions`, que
+ * apunta a ambas. Hoy PostgREST no cuenta ese camino, pero si algún día lo
+ * hiciera, o si se añade otra tabla que una las dos, la consulta fallaría.
+ * Y como el fallo se traduce en una lista vacía, el alumno vería "hoy no
+ * tienes nada" sin que nada se rompiera a la vista.
+ */
+const TASK_WITH_EXAM = '*, exam:exams!study_tasks_exam_id_fkey(id, title, exam_date)';
+
+/**
  * Los tipos de `database.ts` se mantienen a mano y no declaran relaciones,
  * así que Supabase no puede inferir la forma de un select con join. El cast
  * es seguro porque la consulta pide exactamente estos campos y la clave
@@ -45,7 +57,7 @@ export async function listTasksForDate(userId: string, date: IsoDate): Promise<T
 
   const { data, error } = await supabase
     .from('study_tasks')
-    .select('*, exam:exams(id, title, exam_date)')
+    .select(TASK_WITH_EXAM)
     .eq('user_id', userId)
     .eq('scheduled_date', date)
     .in('plan_version_id', versionIds)
@@ -81,7 +93,7 @@ export async function listOverdueTasks(
 
   const { data, error } = await supabase
     .from('study_tasks')
-    .select('*, exam:exams(id, title, exam_date)')
+    .select(TASK_WITH_EXAM)
     .eq('user_id', userId)
     .eq('status', 'pending')
     .neq('type', 'break')

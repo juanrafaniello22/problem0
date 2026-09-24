@@ -143,7 +143,18 @@ export async function createExam(userId: string, input: ExamFormInput): Promise<
     throw new AppError('unknown', 'No hemos podido crear el examen. Inténtalo de nuevo.');
   }
 
-  await replaceTopics(exam.id, input.topics);
+  try {
+    await replaceTopics(exam.id, input.topics);
+  } catch {
+    // Un examen sin temas no sirve para nada, y si se queda cuenta para el
+    // límite del plan gratuito (un examen activo): el alumno reintentaría y
+    // le diríamos "has alcanzado tu límite" por un examen que no quiso crear.
+    // Se deshace antes de avisar, para que el mensaje sea verdad.
+    await deleteExam(userId, exam.id).catch(() => {
+      logger.error('Quedó un examen sin temas que no se pudo deshacer', { examId: exam.id });
+    });
+    throw new AppError('unknown', 'No hemos podido crear el examen. Inténtalo de nuevo.');
+  }
 
   return exam;
 }

@@ -425,7 +425,13 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      /** Sustituye los temas de un examen en una sola transacción (0008). */
+      replace_topics: {
+        Args: { p_exam_id: string; p_topics: Json };
+        Returns: undefined;
+      };
+    };
     Enums: {
       education_level: EducationLevel;
       primary_goal: PrimaryGoal;

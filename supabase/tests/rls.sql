@@ -331,6 +331,110 @@ begin
   end;
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- Sustituir los temas de un examen (replace_topics), otra vez como Ana.
+-- ---------------------------------------------------------------------------
+set local role authenticated;
+set local request.jwt.claim.sub = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+do $$
+declare
+  examen constant uuid := '77777777-7777-4777-8777-777777777777';
+  t1 constant uuid := '77777777-0000-4000-8000-000000000001';
+  t2 constant uuid := '77777777-0000-4000-8000-000000000002';
+  t3 constant uuid := '77777777-0000-4000-8000-000000000003';
+  antes text;
+begin
+  raise notice '';
+  raise notice 'Temas · sustituir la lista de una vez';
+
+  insert into public.exams (id, user_id, title, exam_date)
+  values (examen, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Cálculo', '2099-12-01');
+  insert into public.topics (id, user_id, exam_id, name, position) values
+    (t1, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', examen, 'Límites', 0),
+    (t2, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', examen, 'Derivadas', 1),
+    (t3, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', examen, 'Integrales', 2);
+
+  -- El caso que rompía la versión anterior: reescribir la lista "subiendo"
+  -- los nombres. Renombrar t1 a Derivadas chocaba con t2, que aún lo era.
+  perform public.replace_topics(examen, jsonb_build_array(
+    jsonb_build_object('id', t1, 'name', 'Derivadas'),
+    jsonb_build_object('id', t2, 'name', 'Integrales')
+  ));
+  perform pg_temp.ok('subir los nombres un puesto no choca',
+    (select string_agg(name, ',' order by position) from public.topics where exam_id = examen)
+      = 'Derivadas,Integrales');
+  perform pg_temp.ok('los temas renombrados conservan su id (y sus tareas)',
+    (select name from public.topics where id = t1) = 'Derivadas'
+    and (select name from public.topics where id = t2) = 'Integrales');
+  perform pg_temp.ok('el tema quitado de la lista se borra',
+    not exists (select 1 from public.topics where id = t3));
+
+  perform public.replace_topics(examen, jsonb_build_array(
+    jsonb_build_object('id', t1, 'name', 'Integrales'),
+    jsonb_build_object('id', t2, 'name', 'Derivadas')
+  ));
+  perform pg_temp.ok('intercambiar dos nombres no choca',
+    (select name from public.topics where id = t1) = 'Integrales'
+    and (select name from public.topics where id = t2) = 'Derivadas');
+
+  perform public.replace_topics(examen, jsonb_build_array(
+    jsonb_build_object('id', t2, 'name', 'Derivadas'),
+    jsonb_build_object('id', null, 'name', 'Series'),
+    jsonb_build_object('id', t1, 'name', 'Integrales')
+  ));
+  perform pg_temp.ok('añade temas nuevos y respeta el orden',
+    (select string_agg(name, ',' order by position) from public.topics where exam_id = examen)
+      = 'Derivadas,Series,Integrales');
+
+  -- Todo o nada: con un nombre repetido falla ENTERO y no deja nada a medias.
+  select string_agg(id::text || name || position, ',' order by id) into antes
+    from public.topics where exam_id = examen;
+  begin
+    perform public.replace_topics(examen, jsonb_build_array(
+      jsonb_build_object('id', t1, 'name', 'Repetido'),
+      jsonb_build_object('id', null, 'name', 'repetido')
+    ));
+    raise exception 'FALLO: aceptó dos temas con el mismo nombre';
+  exception when unique_violation then
+    perform pg_temp.ok('si algo falla, no deja la lista a medias',
+      (select string_agg(id::text || name || position, ',' order by id)
+         from public.topics where exam_id = examen) = antes);
+  end;
+
+  -- El examen de otro: error claro, y lo suyo intacto.
+  begin
+    perform public.replace_topics('22222222-2222-4222-8222-222222222222',
+      jsonb_build_array(jsonb_build_object('id', null, 'name', 'Intruso')));
+    raise exception 'FALLO: pudo cambiar los temas del examen de otro';
+  exception when no_data_found then
+    raise notice '  OK    no puede cambiar los temas del examen de otro';
+  end;
+
+  -- Un id de tema de OTRO examen se trata como tema nuevo: nunca se mueve ni
+  -- se renombra un tema ajeno.
+  perform public.replace_topics(examen, jsonb_build_array(
+    jsonb_build_object('id', t2, 'name', 'Derivadas'),
+    jsonb_build_object('id', '55555555-5555-4555-8555-555555555555', 'name', 'Colado')
+  ));
+  perform pg_temp.ok('un id de otro sitio no arrastra ese tema a este examen',
+    not exists (select 1 from public.topics
+                 where id = '55555555-5555-4555-8555-555555555555' and exam_id = examen));
+end $$;
+
+reset role;
+
+-- Sin sesión nadie puede llamarla.
+set local role anon;
+do $$
+begin
+  perform public.replace_topics('77777777-7777-4777-8777-777777777777', '[]'::jsonb);
+  raise exception 'FALLO: un visitante sin sesión pudo llamar a replace_topics';
+exception when insufficient_privilege then
+  raise notice '  OK    sin sesión no se puede llamar';
+end $$;
+reset role;
+
 do $$
 begin
   raise notice '';

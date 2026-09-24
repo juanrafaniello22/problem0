@@ -143,7 +143,7 @@ export async function createExam(userId: string, input: ExamFormInput): Promise<
     throw new AppError('unknown', 'No hemos podido crear el examen. Inténtalo de nuevo.');
   }
 
-  await replaceTopics(userId, exam.id, input.topics);
+  await replaceTopics(exam.id, input.topics);
 
   return exam;
 }
@@ -177,7 +177,7 @@ export async function updateExam(
     throw new AppError('unknown', 'No hemos podido guardar los cambios.');
   }
 
-  await replaceTopics(userId, examId, input.topics);
+  await replaceTopics(examId, input.topics);
 
   return exam;
 }
@@ -188,79 +188,27 @@ export async function updateExam(
  * Conserva los temas que siguen estando (para no perder su progreso ni las
  * tareas que los referencian), renombra los editados, crea los nuevos y
  * borra los que se han quitado.
+ *
+ * Lo hace la función `replace_topics` dentro de la base de datos, en una sola
+ * transacción. Antes eran varias peticiones sueltas, y reescribir la lista
+ * "subiendo" los nombres chocaba con el índice único a mitad de camino: el
+ * alumno veía un error y, además, se quedaba sin el tema que ya se había
+ * borrado. Ahora o se aplica entero, o no cambia nada.
  */
-export async function replaceTopics(
-  userId: string,
-  examId: string,
-  topics: TopicInput[],
-): Promise<void> {
+export async function replaceTopics(examId: string, topics: TopicInput[]): Promise<void> {
   const supabase = await createClient();
   const desired = normalizeTopics(topics);
 
-  const { data: existing, error: readError } = await supabase
-    .from('topics')
-    .select('id, name, position')
-    .eq('exam_id', examId)
-    .eq('user_id', userId);
-
-  if (readError) {
-    logger.error('No se pudieron leer los temas', { code: readError.code });
-    throw new AppError('unknown', 'No hemos podido guardar los temas.');
-  }
-
-  const existingById = new Map((existing ?? []).map((topic) => [topic.id, topic]));
-  const keptIds = new Set<string>();
-
-  const toInsert: { user_id: string; exam_id: string; name: string; position: number }[] = [];
-  const toUpdate: { id: string; name: string; position: number }[] = [];
-
-  desired.forEach((topic, index) => {
-    const current = topic.id ? existingById.get(topic.id) : undefined;
-    if (current) {
-      keptIds.add(current.id);
-      if (current.name !== topic.name || current.position !== index) {
-        toUpdate.push({ id: current.id, name: topic.name, position: index });
-      }
-      return;
-    }
-    toInsert.push({ user_id: userId, exam_id: examId, name: topic.name, position: index });
+  // El usuario lo pone la propia base de datos (auth.uid()), no quien llama:
+  // no hay forma de pasarle el de otra persona.
+  const { error } = await supabase.rpc('replace_topics', {
+    p_exam_id: examId,
+    p_topics: desired.map((topic) => ({ id: topic.id ?? null, name: topic.name })),
   });
 
-  const toDelete = (existing ?? [])
-    .filter((topic) => !keptIds.has(topic.id))
-    .map((topic) => topic.id);
-
-  // El borrado va primero: así se liberan nombres que puedan reutilizarse.
-  if (toDelete.length > 0) {
-    const { error } = await supabase
-      .from('topics')
-      .delete()
-      .in('id', toDelete)
-      .eq('user_id', userId);
-    if (error) {
-      logger.error('No se pudieron borrar temas', { code: error.code });
-      throw new AppError('unknown', 'No hemos podido guardar los temas.');
-    }
-  }
-
-  for (const topic of toUpdate) {
-    const { error } = await supabase
-      .from('topics')
-      .update({ name: topic.name, position: topic.position })
-      .eq('id', topic.id)
-      .eq('user_id', userId);
-    if (error) {
-      logger.error('No se pudo actualizar un tema', { code: error.code });
-      throw new AppError('unknown', 'No hemos podido guardar los temas.');
-    }
-  }
-
-  if (toInsert.length > 0) {
-    const { error } = await supabase.from('topics').insert(toInsert);
-    if (error) {
-      logger.error('No se pudieron crear temas', { code: error.code });
-      throw new AppError('unknown', 'No hemos podido guardar los temas.');
-    }
+  if (error) {
+    logger.error('No se pudieron guardar los temas', { code: error.code });
+    throw new AppError('unknown', 'No hemos podido guardar los temas.');
   }
 }
 

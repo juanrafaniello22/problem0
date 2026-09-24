@@ -27,5 +27,12 @@ do $$ begin create role authenticated nologin; exception when duplicate_object t
 do $$ begin create role service_role nologin bypassrls; exception when duplicate_object then null; end $$;
 
 grant usage on schema public to anon, authenticated, service_role;
+
+-- Supabase deja a estos roles entrar en `auth` y llamar a auth.uid()
+-- (comprobado contra un proyecto real). Las políticas RLS no lo necesitan,
+-- porque guardan la referencia a la función al crearse; una función plpgsql
+-- sí, porque resuelve el nombre al ejecutarse.
+grant usage on schema auth to anon, authenticated, service_role;
+grant execute on function auth.uid() to anon, authenticated, service_role;
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;

@@ -35,13 +35,16 @@ export function CheckoutPending() {
   const gaveUp = attempts >= MAX_ATTEMPTS;
 
   return (
-    <div className="flex flex-col items-center gap-4 text-center">
+    // `aria-live`: el mensaje cambia solo pasados unos segundos, y quien usa
+    // lector de pantalla también tiene que enterarse de que algo tarda.
+    <div className="flex flex-col items-center gap-4 text-center" aria-live="polite">
       {!gaveUp && <Spinner className="size-6 text-primary" />}
 
       <div>
-        <p className="font-semibold">
+        {/* Es el título de /success mientras se espera a Stripe: h1, no p. */}
+        <h1 className="font-semibold">
           {gaveUp ? 'Esto está tardando más de lo normal' : 'Estamos confirmando tu pago'}
-        </p>
+        </h1>
         <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
           {gaveUp
             ? 'Si el cargo se ha hecho, tu cuenta se activará en cuanto recibamos la confirmación. Si en unos minutos sigue igual, escríbenos y lo miramos.'
